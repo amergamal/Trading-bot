@@ -1,0 +1,247 @@
+i want to update this code to add a function to check a db table if a trade for a specific strategy and ticker is open before the sending the order to order_execution and if check the loss count.
+
+Table = TradeStatus
+columns: id(traded), strategy(1min or 5min), date (timestamps), loss_count, active_trade
+
+trade information will be in the trade signal coming from strategy logic module.
+
+trades will NOT be sent to order execution module if one of three is true
+
+1.loss_count = 3 or
+2.active_trade = open or
+3.active_trade = pending
+
+trades will be sent to order execution module if the following is true 
+
+if loss count is less then 3 AND active_trade = closed
+  
+
+scenario #1 : no trade in TradeStatus table
+action: insert the trade in TradeStatus table with active_status=pending, loss count=0 and send order to order_execution, print message order sent to order execution
+
+scenario#2: found a trade with strategy/ticker combo with active_status =open, loss count=0
+action: dont send the trade to order execution, print trade is active
+
+scenario#3: found trade with strategy/ticker combo with active_status =closed, loss count=3
+action: dont send the trade to order execution, print max loss reached
+
+scenario#4: found trade with strategy/ticker combo with active_status= closed, loss count=<3 
+action: send order to order execution, set active_status = pending
+
+scenario #5: found trade with strategy/ticker combo with active_status= pending, loss count=<3
+action: do not send order to order execution, print order in progress.
+
+THIS WILL REPLACE THE FOLLOWING FUNCTION IN THE CODE
+
+loss_count = self.check_loss_count(ticker, strategy, date)
+        if loss_count >= 3:
+            error_message = f"Max losses reached for {ticker} on {strategy} strategy."
+            self.logger.info(error_message)
+            self.update_trade_signal_status(signal['trade_id'], 'Rejected', error_message)
+            return
+
+
+CODE TO UPDATE
+
+from datetime import datetime
+import logging
+import sqlite3
+from order_execution import OrderExecution  # Adjust import statement as per your actual module structure
+
+class RiskManagement:
+    def __init__(self, order_execution):
+        self.order_execution = order_execution
+        self.logger = logging.getLogger('RiskManagement')
+        self.logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+
+    def receive_signal(self, signal):
+        self.logger.info(f"Received signal: {signal}")
+        self.process_signal(signal)
+
+    def process_signal(self, signal):
+        ticker = signal['ticker']
+        strategy = signal['strategy']
+        date = datetime.now().strftime('%Y-%m-%d')
+
+        risk_params = self.get_risk_parameters(ticker, date)
+        if not risk_params:
+            error_message = f"No risk parameters found for {ticker} on {date}"
+            self.logger.error(error_message)
+            self.update_trade_signal_status(signal['trade_id'], 'Rejected', error_message)
+            return
+
+        account_equity = risk_params['account_equity']
+        risk_percentage = risk_params[f'risk_{strategy.lower()}'] / 100  # Convert to decimal form
+        risk_amount = account_equity * risk_percentage
+
+        stop_loss = self.calculate_stop_loss(signal['hod'], signal['highest_atr'], strategy)
+        shares = self.calculate_shares(risk_amount, stop_loss, signal['entry_price'])
+        if shares <= 0:
+            error_message = f"Invalid shares calculated: {shares}"
+            self.logger.error(error_message)
+            self.update_trade_signal_status(signal['trade_id'], 'Rejected', error_message)
+            return
+
+        loss_count = self.check_loss_count(ticker, strategy, date)
+        if loss_count >= 3:
+            error_message = f"Max losses reached for {ticker} on {strategy} strategy."
+            self.logger.info(error_message)
+            self.update_trade_signal_status(signal['trade_id'], 'Rejected', error_message)
+            return
+
+        signal['shares'] = shares
+        signal['stop_loss'] = stop_loss
+        self.send_to_order_execution(signal)
+        self.insert_trade_signal(signal)
+
+    def get_risk_parameters(self, ticker, date):
+        try:
+            conn = sqlite3.connect('tms_data.db')
+            query = """
+                SELECT RISK_1MIN, RISK_5MIN, ACCOUNT_EQUITY FROM TradeParameters
+                WHERE TICKER = ? AND DATE = ?
+            """
+            c = conn.cursor()
+            c.execute(query, (ticker, date))
+            row = c.fetchone()
+            conn.close()
+            if row:
+                return {'risk_1min': row[0], 'risk_5min': row[1], 'account_equity': row[2]}
+            else:
+                return None
+        except Exception as e:
+            self.logger.error(f"Error fetching risk parameters: {e}")
+            return None
+
+    def calculate_stop_loss(self, hod, highest_atr, strategy):
+        try:
+            stop_loss = None
+            if strategy == '1Min':
+                stop_loss = hod + highest_atr
+            elif strategy == '5Min':
+                stop_loss = hod
+            if stop_loss is not None:
+                # Round the stop loss to 2 decimal places
+                stop_loss = round(stop_loss, 2)
+            return stop_loss
+        except Exception as e:
+            self.logger.error(f"Error in calculate_stop_loss: {e}")
+            return None
+
+    def calculate_shares(self, risk_amount, stop_loss, signal_price):
+        try:
+            difference = abs(signal_price - stop_loss)
+            if difference == 0:
+                raise ValueError("Difference between signal price and stop loss is zero, cannot divide by zero")
+            return int(risk_amount / difference)
+        except Exception as e:
+            self.logger.error(f"Error calculating shares: {e}")
+            return 0
+
+    def check_loss_count(self, ticker, strategy, date):
+        try:
+            conn = sqlite3.connect('tms_data.db')
+            query = """
+                SELECT LOSS_COUNT FROM TradeStatus
+                WHERE STRATEGY = ? AND TICKER = ? AND DATE = ?
+            """
+            c = conn.cursor()
+            c.execute(query, (strategy, ticker, date))
+            row = c.fetchone()
+            conn.close()
+            if row:
+                return row[0]
+            else:
+                return 0
+        except Exception as e:
+            self.logger.error(f"Error checking loss count: {e}")
+            return 0
+
+    def send_to_order_execution(self, signal):
+        
+        trade_id = signal['trade_id']
+        ticker = signal['ticker']
+        shares = signal['shares']
+        stop_loss = signal['stop_loss']
+        date = datetime.now().strftime('%Y-%m-%d')
+
+        # Send market sell order
+        command_sell = {
+            'trade_id': trade_id,
+            'ticker': ticker,
+            'shares': shares,
+            'order_type': 'market',
+            'stop_price': stop_loss,  # Include stop price for follow-up stop market order
+            'date': date  # Add date to the order
+        }
+        self.logger.info(f"Sending sell market order: {command_sell}")
+        self.order_execution.execute_command(command_sell)
+
+        self.logger.info(f"Order details sent to OrderExecution for trade ID: {trade_id}")
+
+        # Update TradeSignal table in separate transactions
+        try:
+          # Insert shares (separate transaction)
+          self.insert_trade_signal_shares(trade_id, shares)
+
+          # Update status (separate transaction)
+          self.update_trade_signal_status(trade_id, 'Approved', None)
+
+        except Exception as e:
+          error_message = str(e)  # Capture the error message
+          self.logger.error(f"Error sending trade to order execution: {error_message}")
+          self.update_trade_signal_status(signal['trade_id'], 'Rejected', error_message)
+
+    def update_trade_signal_status(self, trade_id, status, note=None):
+        self.logger.info(f"Attempting to update trade signal status for trade ID: {trade_id} to {status}")
+        try:
+            conn = sqlite3.connect('tms_data.db')
+            query = """
+                UPDATE TradeSignal
+                SET status = ?, note = ?
+                WHERE tradeID = ?
+            """
+            self.logger.debug(f"Executing query: {query} with params: {status}, {note}, {trade_id}")
+            c = conn.cursor()
+            c.execute(query, (status, note if note else '', trade_id))
+            conn.commit()
+            conn.close()
+            self.logger.info(f"TradeSignal status updated to {status} for trade ID: {trade_id}")
+        except Exception as e:
+            self.logger.error(f"Error updating trade signal status: {e}")
+
+    def insert_trade_signal(self, signal):
+        try:
+            trade_id = signal.get('trade_id')
+            shares = signal.get('shares')
+            self.logger.info(f"Attempting to insert shares into trade signal trade ID: {trade_id} to {shares}")
+            
+            conn = sqlite3.connect('tms_data.db')
+            query = """
+                UPDATE TradeSignal SET shares = ? WHERE tradeID = ?
+            """
+            self.logger.debug(f"Executing query: {query} with params: {signal['shares']}, {signal['trade_id']}")
+            c = conn.cursor()
+            c.execute(query, (
+                signal['shares'],
+                signal['trade_id']
+            ))
+            conn.commit()
+            conn.close()
+            self.logger.info("Shares inserted into TradeSignal successfully.")
+        except sqlite3.Error as e:
+            self.logger.error(f"Error inserting shares into TradeSignal: {e}")
+
+    
+if __name__ == "__main__":
+    # Initialize OrderExecution module instance (replace with actual implementation)
+    order_execution = OrderExecution()  # Create a placeholder order_execution instance
+    risk_management = RiskManagement(order_execution)  # Create risk_management instance with order_execution
+
+    # The script now runs and waits for signals from StrategyLogic
+    while True:
+        pass  # Keep the script running indefinitely to wait for signals

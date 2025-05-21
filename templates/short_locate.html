@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Short Locate</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Short Locate</h1>
+
+        <h2 class="mt-4">Locate Shares</h2>
+        <form id="locate-form">
+            <div id="locate-container">
+                <div class="form-row mb-3">
+                    <div class="col">
+                        <input type="text" class="form-control" name="tickers[]" placeholder="Ticker">
+                    </div>
+                    <div class="col">
+                        <input type="number" class="form-control" name="shares[]" placeholder="Shares">
+                    </div>
+                    <div class="col">
+                        <button type="button" class="btn btn-danger remove-row">X</button>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary" id="add-row">Add Ticker</button>
+            <button type="submit" class="btn btn-success" id="locate-shares">Locate</button>
+        </form>
+
+        <h2 class="mt-5">Located Shares</h2>
+        <table class="table table-bordered" id="located-shares-table">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Shares</th>
+                    <th>Price per Share</th>
+                    <th>Total Price</th>
+                    <th>Route</th>
+                    <th>Notes</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Located shares will be populated here -->
+            </tbody>
+        </table>
+
+        <h2 class="mt-5">Accepted Shares</h2>
+        <table class="table table-bordered" id="accepted-shares-table">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Shares</th>
+                    <th>Price per Share</th>
+                    <th>Total Price</th>
+                    <th>Route</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Accepted shares will be populated here -->
+            </tbody>
+        </table>
+
+        <h2 class="mt-5">Borrowed Shares</h2>
+        <table class="table table-bordered" id="borrowed-shares-table">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Borrowed</th>
+                    <th>Available</th>
+                    <th>Cost per Share</th>
+                    <th>Total Cost</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Borrowed shares will be populated here -->
+            </tbody>
+        </table>
+
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Fetch and populate Borrowed Shares when the page loads
+            fetchBorrowedShares();
+
+            $('#add-row').click(function() {
+                $('#locate-container').append(`
+                    <div class="form-row mb-3">
+                        <div class="col">
+                            <input type="text" class="form-control" name="tickers[]" placeholder="Ticker">
+                        </div>
+                        <div class="col">
+                            <input type="number" class="form-control" name="shares[]" placeholder="Shares">
+                        </div>
+                        <div class="col">
+                            <button type="button" class="btn btn-danger remove-row">X</button>
+                        </div>
+                    </div>
+                `);
+            });
+
+            $(document).on('click', '.remove-row', function() {
+                $(this).closest('.form-row').remove();
+            });
+
+            $('#locate-form').submit(function(e) {
+                e.preventDefault();
+                var formData = new FormData(this);
+                $.ajax({
+                    url: '/locate_shares',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(data) {
+                        populateLocatedShares(data.located_shares);
+                        fetchBorrowedShares();  // Refresh Borrowed Shares after locating shares
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        alert('Error locating shares: ' + textStatus);
+                    }
+                });
+            });
+
+            function populateLocatedShares(locatedShares) {
+                const tbody = $('#located-shares-table tbody');
+                tbody.empty();
+                locatedShares.forEach(share => {
+                    tbody.append(`
+                        <tr>
+                            <td>${share.ticker}</td>
+                            <td>${share.shares}</td>
+                            <td>${share.price}</td>
+                            <td>${share.total_cost}</td>
+                            <td>${share.route}</td>
+                            <td>Offered</td>
+                            <td><button class="btn btn-success accept-offer" data-ticker="${share.ticker}">Accept</button></td>
+                        </tr>
+                    `);
+                });
+            }
+
+            $(document).on('click', '.accept-offer', function() {
+                const ticker = $(this).data('ticker');
+                $.post('/accept_offer', { ticker: ticker }, function(data) {
+                    if (data.status === 'success') {
+                        addAcceptedShares(data.accepted_share);
+                        fetchBorrowedShares();  // Refresh Borrowed Shares after accepting offer
+                    } else {
+                        alert('Failed to accept offer');
+                    }
+                });
+            });
+
+            function addAcceptedShares(acceptedShare) {
+                const tbody = $('#accepted-shares-table tbody');
+                tbody.append(`
+                    <tr>
+                        <td>${acceptedShare.ticker}</td>
+                        <td>${acceptedShare.shares}</td>
+                        <td>${acceptedShare.price}</td>
+                        <td>${acceptedShare.total_cost}</td>
+                        <td>${acceptedShare.route}</td>
+                        <td>Accepted</td>
+                    </tr>
+                `);
+            }
+
+            function fetchBorrowedShares() {
+                $.get('/get_borrowed_shares', function(data) {
+                    if (data.borrowed_shares) {
+                        populateBorrowedShares(data.borrowed_shares);
+                    } else {
+                        alert('Error fetching borrowed shares: ' + data.message);
+                    }
+                });
+            }
+
+            function populateBorrowedShares(borrowedShares) {
+                const tbody = $('#borrowed-shares-table tbody');
+                tbody.empty();
+                borrowedShares.forEach(share => {
+                    tbody.append(`
+                        <tr>
+                            <td>${share.ticker}</td>
+                            <td>${share.borrowed_shares}</td>
+                            <td>${share.available_shares}</td>
+                            <td>${share.cost_per_share}</td>
+                            <td>${share.total_cost.toFixed(2)}</td>
+                        </tr>
+                    `);
+                });
+            }
+        });
+    </script>
+</body>
+</html>

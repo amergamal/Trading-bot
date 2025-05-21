@@ -1,0 +1,30 @@
+2025-04-28 20:50:58,640 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-28 20:55:43,684 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-28 20:56:51,451 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-28 21:04:05,900 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-28 21:08:01,864 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-28 21:10:47,921 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-28 21:14:11,934 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-28 21:14:50,435 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-28 21:17:05,443 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-29 08:55:00,344 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-29 08:57:24,729 - EndOfDay - DEBUG - Starting to close position for ticker: TSLA.
+2025-04-29 08:57:24,731 - EndOfDay - INFO - Closing position for tradeID SL_1, ticker TSLA
+2025-04-29 08:57:24,733 - EndOfDay - DEBUG - No matching trade details for tradeID SL_1.
+2025-04-29 08:57:55,963 - EndOfDay - DEBUG - Starting to close position for ticker: TSLA.
+2025-04-29 08:57:55,965 - EndOfDay - INFO - Closing position for tradeID SL_1, ticker TSLA
+2025-04-29 08:57:55,966 - EndOfDay - DEBUG - No matching trade details for tradeID SL_1.
+2025-04-29 08:58:07,844 - EndOfDay - DEBUG - Starting to close position for ticker: TSLA.
+2025-04-29 08:58:07,916 - EndOfDay - INFO - Closing position for tradeID SL_1, ticker TSLA
+2025-04-29 08:58:07,917 - EndOfDay - DEBUG - No matching trade details for tradeID SL_1.
+2025-04-29 08:58:41,456 - EndOfDay - DEBUG - Starting to close position for ticker: TSLA.
+2025-04-29 08:58:41,457 - EndOfDay - INFO - Closing position for tradeID SL_1, ticker TSLA
+2025-04-29 08:58:41,460 - EndOfDay - DEBUG - No matching trade details for tradeID SL_1.
+2025-04-29 09:04:36,446 - EndOfDay - DEBUG - Starting to close position for ticker: TSLA.
+2025-04-29 09:04:36,448 - EndOfDay - INFO - Closing position for tradeID SL_1, ticker TSLA
+2025-04-29 09:04:36,449 - EndOfDay - DEBUG - No matching trade details for tradeID SL_1.
+2025-04-29 09:21:30,140 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-29 11:18:07,459 - EndOfDay - INFO - SocketIO instance provided; real-time updates enabled.
+2025-04-29 11:18:48,180 - EndOfDay - DEBUG - Starting to close position for ticker: TSLA.
+2025-04-29 11:18:48,183 - EndOfDay - INFO - Closing position for tradeID SL_1, ticker TSLA
+2025-04-29 11:18:48,186 - EndOfDay - DEBUG - No matching trade details for tradeID SL_1.
