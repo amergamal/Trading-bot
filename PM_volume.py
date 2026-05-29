@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import RotatingFileHandler
 import psycopg2
 from datetime import datetime, time, timedelta
 import pytz
@@ -16,7 +17,7 @@ if not logger.handlers:
     c_handler.setFormatter(c_format)
     logger.addHandler(c_handler)
     
-    pm_handler = logging.FileHandler('pm_volume.log')
+    pm_handler = RotatingFileHandler('pm_volume.log', maxBytes=5*1024*1024, backupCount=2, encoding='utf-8')
     pm_handler.setLevel(logging.DEBUG)
     pm_handler.setFormatter(c_format)
     logger.addHandler(pm_handler)

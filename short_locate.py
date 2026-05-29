@@ -3,6 +3,7 @@ import psycopg2
 from psycopg2 import pool
 import config
 import logging
+from logging.handlers import RotatingFileHandler
 import threading
 import time
 from datetime import datetime
@@ -24,9 +25,9 @@ class Slocate:
         console_handler.setFormatter(formatter)
         self.logger.addHandler(console_handler)
         
-        # File handler (new)
-        file_handler = logging.FileHandler('slocate.log')
-        file_handler.setLevel(logging.DEBUG)  # Capture all logs (DEBUG and above)
+        # File handler — rotating, 5 MB cap, 2 backups
+        file_handler = RotatingFileHandler('slocate.log', maxBytes=5*1024*1024, backupCount=2, encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)
         self.logger.addHandler(file_handler)
         

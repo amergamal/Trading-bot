@@ -1,5 +1,6 @@
 
 import logging
+from logging.handlers import RotatingFileHandler
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import Json
@@ -54,7 +55,7 @@ def _setup_logger(name, log_file=None, console_level=logging.WARNING):
     log.propagate = False
     if not log.handlers:
         if log_file:
-            fh = logging.FileHandler(log_file, encoding='utf-8')
+            fh = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=2, encoding='utf-8')
             fh.setLevel(logging.DEBUG)
             fh.setFormatter(_LOG_FMT)
             log.addHandler(fh)
