@@ -598,7 +598,7 @@ class StrategyLogic:
             """
             cursor.execute(query, (ticker.upper(), today))
             result = cursor.fetchone()
-            if result:
+            if result and result[0] is not None:
                 return float(result[0])
             else:
                 self.logger.warning(f"No open price found for {ticker} in tradeparameters")
@@ -625,7 +625,7 @@ class StrategyLogic:
             """
             cursor.execute(query, (ticker.upper(), today))
             pmh = cursor.fetchone()
-            if pmh:
+            if pmh and pmh[0] is not None:
                 return float(pmh[0])
             else:
                 self.logger.warning(f"No pmh value found for {ticker} in tradeparameters")
@@ -705,7 +705,7 @@ class StrategyLogic:
                         if conn:
                             self.db_pool.putconn(conn)
                 except Exception as e:
-                    self.logger.error(f"Error processing market data for {ticker}: {str(e)}")
+                    self.logger.error(f"Error processing market data for {ticker}: {str(e)}", exc_info=True)
             else:
                 self.logger.debug(f"No new data for {ticker} in {table_name}")
             
@@ -991,10 +991,8 @@ class StrategyLogic:
             row = cursor.fetchone()
             if row:
                 hod, account_equity = row
-                
-                hod = float(hod)
-                
-                account_equity = float(account_equity) if account_equity is not None else 50000.0  # Default equity
+                hod = float(hod) if hod is not None else None
+                account_equity = float(account_equity) if account_equity is not None else 50000.0
         
             else:
                 self.logger.warning(f"No record found for ticker: {ticker} on date: {date}")
