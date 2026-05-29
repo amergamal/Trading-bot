@@ -1,6 +1,8 @@
 from datetime import datetime
 import logging
-import sqlite3
+import psycopg2
+from psycopg2 import pool
+import config  # Import config.py for DB_CONFIG
 import threading
 from order_execution import OrderExecution  # Adjust import statement as per your actual module structure
 
@@ -14,6 +16,16 @@ class RiskManagement:
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
+        try:
+            self.db_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=20,
+                **config.DB_CONFIG
+            )
+            self.logger.info("PostgreSQL connection pool initialized")
+        except psycopg2.OperationalError as e:
+            self.logger.error(f"Failed to initialize PostgreSQL connection pool: {e}")
+            raise
 
     def receive_signal(self, signal):
         self.logger.info(f"Received signal: {signal}")
@@ -24,89 +36,98 @@ class RiskManagement:
     def process_signal(self, signal):
         ticker = signal['ticker']
         strategy = signal['strategy']
+        trade_id = signal['tradeID']
         date = datetime.now().strftime('%Y-%m-%d')
 
         trade_status = self.check_trade_status(ticker, strategy)
 
-        if strategy in ['1Min', 'limit']:
-            # Process signal as is for 1Min or limit strategies
-            if not trade_status:
-                self.insert_trade_status(ticker, strategy, 'pending', 0)
-                self.send_to_order_execution(signal)
-            else:
-                active_trade, loss_count = trade_status
-                if loss_count >= 3:
-                    self.logger.info("Max loss reached for strategy 1Min or limit")
-                    return
+        
+        
+        # Process signal using the method for other strategies
+        if not trade_status:
+            self.insert_trade_status(ticker, strategy, 'pending', 0)
+            self.send_to_order_execution(signal)
+                
+        else:
+            active_trade, loss_count = trade_status
+            if active_trade == 'open':
+                self.logger.info(f"Trade is active for {strategy}")
+                return
+            elif active_trade == 'pending':
+                self.logger.info(f"Order in progress for {strategy}")
+                return
+            elif loss_count >= 3:
+                self.logger.info(f"Max loss reached for {strategy}")
+                return
+            elif active_trade == 'closed' and loss_count < 3:
                 self.update_trade_status(ticker, strategy, 'pending')
                 self.send_to_order_execution(signal)
-        else:
-            # Process signal using the method for other strategies
-            if not trade_status:
-                self.insert_trade_status(ticker, strategy, 'pending', 0)
-                self.send_to_order_execution(signal)
-                
-            else:
-                active_trade, loss_count = trade_status
-                if active_trade == 'open':
-                    self.logger.info(f"Trade is active for {strategy}")
-                    return
-                elif active_trade == 'pending':
-                    self.logger.info(f"Order in progress for {strategy}")
-                    return
-                elif loss_count >= 3:
-                    self.logger.info(f"Max loss reached for {strategy}")
-                    return
-                elif active_trade == 'closed' and loss_count < 3:
-                    self.update_trade_status(ticker, strategy, 'pending')
-                    self.send_to_order_execution(signal)
                     
 
     def check_trade_status(self, ticker, strategy):
         try:
-            conn = sqlite3.connect('EOD_data.db')
+            conn = self.db_pool.getconn()
+            cursor = conn.cursor()
+            today_date = datetime.now().strftime('%Y-%m-%d')
             query = """
-                SELECT active_trade, loss_count FROM TradeStatus
-                WHERE strategy = ? AND ticker = ? AND date = ?
+                SELECT active_trade, loss_count FROM tradestatus
+                WHERE strategy = %s AND ticker = %s AND date = %s
             """
-            current_date = datetime.now().strftime('%Y-%m-%d')  # Get the current date
-            c = conn.cursor()
-            c.execute(query, (strategy, ticker, current_date))
-            row = c.fetchone()
-            conn.close()
+            
+            cursor.execute(query, (strategy, ticker, today_date))
+            row = cursor.fetchone()
             return row if row else None
-        except Exception as e:
+        except psycopg2.Error as e:
             self.logger.error(f"Error checking trade status: {e}")
             return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                self.db_pool.putconn(conn)
 
     def insert_trade_status(self, ticker, strategy, active_trade, loss_count):
         try:
-            conn = sqlite3.connect('EOD_data.db')
+            conn = self.db_pool.getconn()
+            cursor = conn.cursor()
+            today_date = datetime.now().strftime('%Y-%m-%d')
             query = """
-                INSERT INTO TradeStatus (strategy, ticker, active_trade, loss_count, date)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO tradestatus (strategy, ticker, active_trade, loss_count, date)
+                VALUES (%s, %s, %s, %s, %s)
             """
-            c = conn.cursor()
-            c.execute(query, (strategy, ticker, active_trade, loss_count, datetime.now().strftime('%Y-%m-%d')))
+            cursor.execute(query, (strategy, ticker, active_trade, loss_count, today_date))
             conn.commit()
-            conn.close()
-        except Exception as e:
+            self.logger.info(f"Inserted trade status for ticker: {ticker}, strategy: {strategy}, active_trade: {active_trade}")
+        except psycopg2.Error as e:
             self.logger.error(f"Error inserting trade status: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                self.db_pool.putconn(conn)
 
     def update_trade_status(self, ticker, strategy, active_trade):
         try:
-            conn = sqlite3.connect('EOD_data.db')
+            conn = self.db_pool.getconn()
+            cursor = conn.cursor()
+            today_date = datetime.now().strftime('%Y-%m-%d')
             query = """
-                UPDATE TradeStatus
-                SET active_trade = ?
-                WHERE strategy = ? AND ticker = ?
+                UPDATE tradestatus
+                SET active_trade = %s
+                WHERE strategy = %s AND ticker = %s AND date = %s
             """
-            c = conn.cursor()
-            c.execute(query, (active_trade, strategy, ticker))
+            
+            cursor.execute(query, (active_trade, strategy, ticker, today_date))
             conn.commit()
-            conn.close()
-        except Exception as e:
+            self.logger.info(f"Updated trade status to {active_trade} for ticker={ticker}, strategy={strategy}, date={today_date}")
+    
+        except psycopg2.Error as e:
             self.logger.error(f"Error updating trade status: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                self.db_pool.putconn(conn)
             
          
             
@@ -115,47 +136,38 @@ class RiskManagement:
             
 
     def send_to_order_execution(self, signal):
-        trade_id = signal['trade_id']
+        trade_id = signal['tradeID']
         ticker = signal['ticker']
         shares = signal['shares']
-        hod = signal['hod']
-        stop_loss = signal['s_loss']
+        
+        stop_price = signal['s_loss']
         entry_price = signal['entry_price']
         strategy = signal['strategy']  # Add strategy to the signal
-        date = datetime.now().strftime('%Y-%m-%d')
+        target_price = signal['target_price']
+        risk_amount = signal['risk']
         
-        # Determine order type and include entry_price if strategy is limit
-        if strategy in ['1Min', '1MinBS', '1Minco', '5Min', '5MinBS', '5Minde']:
-            order_type = 'market'
-        elif strategy == 'limit':
-            order_type = 'limit'
-        elif strategy == 'long':
-            order_type = 'marketl'    
-        else:
-            self.logger.error("Unknown strategy type.")
-            return
         
-        # Set stop_price based on strategy
-        if strategy in ['1Min', 'limit', 'marketl']:
-            stop_price = stop_loss
-        else:
-            stop_price = hod
+        
+        
+        
 
         # Send market sell order
         command_sell = {
-            'trade_id': trade_id,
+            'order_type': 'target',
             'ticker': ticker,
             'shares': shares,
-            'order_type': order_type,
-            'stop_price': stop_price,  # Include stop price for follow-up stop market order
-            'date': date,  # Add date to the order
-            'strategy': strategy  # Include strategy in the command
+            'trade_id': trade_id,
+            'stop_price': stop_price,
+            'strategy': strategy,
+            'price': entry_price,  # Maps to entry_price in execute_command
+            'target_price': target_price,
+            'risk': risk_amount
+            
         }
         
-        if order_type == 'limit':
-            command_sell['price'] = entry_price  # Add entry price for limit orders
+        
             
-        self.logger.info(f"Sending {order_type} order: {command_sell}")
+        self.logger.info(f"Sending order: {command_sell}")
         self.order_execution.execute_command(command_sell)
 
         self.logger.info(f"Order details sent to OrderExecution for trade ID: {trade_id}")

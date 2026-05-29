@@ -7,49 +7,59 @@ from plotly.subplots import make_subplots
 import pandas as pd
 from sqlalchemy import create_engine
 import datetime
+from datetime import timedelta
+import config  # Import config.py for DB_CONFIGfrom datetime import timedelta
 
-# Connect to your SQLite database
-engine = create_engine('sqlite:///EOD_data.db')
+
+# Connect to PostgreSQL database
+engine = create_engine(
+    f"postgresql+psycopg2://{config.DB_CONFIG['user']}:{config.DB_CONFIG['password']}@{config.DB_CONFIG['host']}:{config.DB_CONFIG['port']}/{config.DB_CONFIG['dbname']}"
+)
+
 
 # Fetch data from the database
 def fetch_data(engine, table_name):
     today = datetime.datetime.now().strftime('%Y/%m/%d')
-    query = f"SELECT * FROM {table_name} WHERE substr(timestamp, 1, 10) = '{today}'"
-    return pd.read_sql(query, engine, parse_dates=['timestamp'])
+    query = f"SELECT * FROM {table_name.lower()} WHERE substring(timestamp, 1, 10) = %s"
+    return pd.read_sql(query, engine, params=(today,), parse_dates=['timestamp'])
 
-# Fetch signals from the database, including stop loss and buy close
 def fetch_trade_signals(engine):
     today = datetime.datetime.now().strftime('%Y-%m-%d')
-    
-    # Fetch Sell-Short signals
-    sell_query = f"SELECT * FROM TradeSignal WHERE substr(time, 1, 10) = '{today}'"
-    sell_signals = pd.read_sql(sell_query, engine, parse_dates=['time'])
-    
-    return sell_signals
-    
-# Fetch Stop Loss and Buy Close signals from StopMarket and BuyMarket
-def fetch_stop_buy_signals(engine):
-    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    query = "SELECT * FROM tradesignal WHERE substring(time, 1, 10) = %s"
+    return pd.read_sql(query, engine, params=(today,), parse_dates=['time'])
 
-    # Fetch Stop Loss signals based on date and time columns
-    stop_loss_query = f"SELECT * FROM StopMarket WHERE date = '{today}'"
-    stop_loss_signals = pd.read_sql(stop_loss_query, engine)
+def fetch_stop_buy_signals(engine, ticker):
+    today = datetime.date.today().strftime('%Y-%m-%d')
+    ticker = str(ticker)
 
-    # Combine 'date' and 'time' columns into a full datetime
-    stop_loss_signals['datetime'] = pd.to_datetime(stop_loss_signals['date'] + ' ' + stop_loss_signals['time'])
-    
-    
+    # 1. Buy-close (unchanged)
+    buy_close = pd.read_sql(
+        "SELECT * FROM buymarket WHERE date = %s AND ticker = %s",
+        engine, params=(today, ticker)
+    )
 
-    # Fetch Buy Close signals based on date and time columns
-    buy_close_query = f"SELECT * FROM BuyMarket WHERE date = '{today}'"
-    buy_close_signals = pd.read_sql(buy_close_query, engine)
+    # 2. ALL possible stop tables
+    stop_tables = ['stopmarket', 'executedstop', 'canceledstop']
+    stops = []
 
-    # Combine 'date' and 'time' columns into a full datetime
-    buy_close_signals['datetime'] = pd.to_datetime(buy_close_signals['date'] + ' ' + buy_close_signals['time'])
-    
-    
+    for table in stop_tables:
+        df = pd.read_sql(
+            f"SELECT * FROM {table} WHERE date = %s AND ticker = %s",
+            engine, params=(today, ticker)
+        )
+        if len(df) > 0:
+            df['source_table'] = table
+            stops.append(df)
 
-    return stop_loss_signals, buy_close_signals
+    stop_loss_signals = pd.concat(stops, ignore_index=True) if stops else pd.DataFrame()
+
+    # 3. Add proper datetime to BOTH frames (exactly like your working code)
+    for df in [stop_loss_signals, buy_close]:
+        if not df.empty and 'date' in df.columns and 'time' in df.columns:
+            df['datetime'] = pd.to_datetime(df['date'] + ' ' + df['time'], errors='coerce')
+            df.dropna(subset=['datetime'], inplace=True)
+
+    return stop_loss_signals, buy_close
 
 
 
@@ -61,7 +71,7 @@ def calculate_vwap(df):
     df.loc[:, 'vwap'] = (p * q).cumsum() / q.cumsum()  # Use .loc to avoid SettingWithCopyWarning
     return df
 
-# Plot chart
+
 def plot_chart(df, sell_signals, stop_loss_signals, buy_close_signals, title):
     df = df.copy()
     df = df.sort_values(by='timestamp')
@@ -69,13 +79,19 @@ def plot_chart(df, sell_signals, stop_loss_signals, buy_close_signals, title):
     # Calculate SMAs
     df['10_sma'] = df['close'].rolling(window=10).mean()
     df['20_sma'] = df['close'].rolling(window=20).mean()
+    df['50_sma'] = df['close'].rolling(window=50).mean()
     
-    # Create subplots with shared x-axis
-    combined_fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                                 row_heights=[0.7, 0.3],
-                                 vertical_spacing=0.05)
+    # Calculate VWAP
+    df = calculate_vwap(df)
+
+    # Create subplots
+    combined_fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, 
+        row_heights=[0.7, 0.3],
+        vertical_spacing=0.05
+    )
     
-    # Add candlestick chart to the first row
+    # Add candlestick
     combined_fig.add_trace(go.Candlestick(
         x=df['timestamp'],
         open=df['open'],
@@ -85,120 +101,217 @@ def plot_chart(df, sell_signals, stop_loss_signals, buy_close_signals, title):
         name='Price'
     ), row=1, col=1)
 
-    # Calculate VWAP
-    df = calculate_vwap(df)
-
-    # Add VWAP line to the first row
-    combined_fig.add_trace(go.Scatter(
-        x=df['timestamp'],
-        y=df['vwap'],
-        mode='lines',
-        name='VWAP',
-        line=dict(color='yellow', width=2)
-    ), row=1, col=1)
+    # Add VWAP and SMAs
+    combined_fig.add_trace(go.Scatter(x=df['timestamp'], y=df['vwap'], mode='lines', name='VWAP', line=dict(color='yellow', width=2)), row=1, col=1)
+    combined_fig.add_trace(go.Scatter(x=df['timestamp'], y=df['10_sma'], mode='lines', name='10 SMA', line=dict(color='red', width=1.5)), row=1, col=1)
+    combined_fig.add_trace(go.Scatter(x=df['timestamp'], y=df['20_sma'], mode='lines', name='20 SMA', line=dict(color='blue', width=1.5)), row=1, col=1)
+    combined_fig.add_trace(go.Scatter(x=df['timestamp'], y=df['50_sma'], mode='lines', name='50 SMA', line=dict(color='purple', width=1.5)), row=1, col=1)
     
-    # Add 10 SMA to the first row
-    combined_fig.add_trace(go.Scatter(
-        x=df['timestamp'],
-        y=df['10_sma'],
-        mode='lines',
-        name='10 SMA',
-        line=dict(color='red', width=1.5)
-    ), row=1, col=1)
-
-    # Add 20 SMA to the first row
-    combined_fig.add_trace(go.Scatter(
-        x=df['timestamp'],
-        y=df['20_sma'],
-        mode='lines',
-        name='20 SMA',
-        line=dict(color='blue', width=1.5)
-    ), row=1, col=1)
-
-    # Add Sell-Short, Stop Loss, and Buy Close signals to the first row
-    for _, signal in sell_signals.iterrows():
-        combined_fig.add_trace(go.Scatter(
-            x=[signal['time']],
-            y=[signal['price']],
-            mode='markers+text',
-            marker=dict(color='red', size=12),
-            text=[signal['strategy']],
-            textposition='bottom center',
-            name=signal['strategy'] 
-        ), row=1, col=1)
-    for _, signal in stop_loss_signals.iterrows():
-        combined_fig.add_trace(go.Scatter(
-            x=[signal['datetime']],
-            y=[signal['price']],
-            mode='markers+text',
-            marker=dict(color='orange', size=12),
-            text=[f"SL - {signal['strategy']}"],  # Dynamically format the text
-            textposition='bottom center',
-            name=signal['strategy']
-        ), row=1, col=1)
-    for _, signal in buy_close_signals.iterrows():
-        combined_fig.add_trace(go.Scatter(
-            x=[signal['datetime']],
-            y=[signal['price']],
-            mode='markers+text',
-            marker=dict(color='blue', size=12),
-            text=['Buy Close'],
-            textposition='bottom center'
-        ), row=1, col=1)
+    
+    if not df.empty:
+        hod_price = df['high'].max()
+        hod_row = df[df['high'] == hod_price].iloc[0]  # first occurrence
+        hod_time = hod_row['timestamp']
         
-    market_open = datetime.datetime.strptime(df['timestamp'].iloc[0].strftime('%Y-%m-%d') + ' 09:30:00', '%Y-%m-%d %H:%M:%S')
-    market_close = datetime.datetime.strptime(df['timestamp'].iloc[0].strftime('%Y-%m-%d') + ' 16:00:00', '%Y-%m-%d %H:%M:%S')
+        # Format price to 2 decimals
+        price_label = f"{hod_price:.2f}"
+   
+        # Marker + "HOD" label directly above the candle
+        combined_fig.add_trace(go.Scatter(
+            x=[hod_time],
+            y=[hod_price],
+            mode='markers+text',
+            marker=dict(
+                color='green',
+                size=10,
+                symbol='circle',
+                line=dict(width=1, color='white')
+            ),
+            text=[f"HOD ({price_label})"],  # ← HOD + price in label
+            textposition='top center',
+            textfont=dict(color='green', size=12, family="Arial Black"),
+            name='HOD',
+            hovertemplate=f"<b>HOD</b><br><b>Price: {hod_price:.2f}</b><extra></extra>",
+            showlegend=False
+        ), row=1, col=1)
+ 
+    # === SELL SIGNALS ===
+    for _, sig in sell_signals.iterrows():
+        strat = sig['strategy']
+        price = sig['price']
+        combined_fig.add_trace(go.Scatter(
+            x=[sig['time']],
+            y=[sig['price']],
+            mode='markers+text',
+            marker=dict(color='red', size=12, symbol='triangle-down'),
+            text=[strat],
+            textposition='bottom center',
+            name=strat,
+            hovertemplate=(
+                f"<b>{strat}</b><br>"
+                f"<b>Sell Short</b><br>"
+                f"<b>Price: {price:.2f}</b>"
+                "<extra></extra>"
+            ),
+            showlegend=False
+        ), row=1, col=1)
 
+
+    # === STOP-LOSS SIGNALS (TIME-ALIGNED) ===
+    interval = 1 if '1min' in title.lower() else 5
+
+    for _, signal in stop_loss_signals.iterrows():
+        stop_time = signal['datetime']
+        stop_price = signal['price']
+        strat = signal['strategy']  # ← Define strat here
+        
+        # Floor to candle start
+        if interval == 1:
+            candle_time = stop_time.floor('T')  # e.g., 10:16:23 → 10:16:00
+        else:
+            minutes = stop_time.minute
+            floored_minute = (minutes // interval) * interval
+            candle_time = stop_time.replace(minute=floored_minute, second=0, microsecond=0)
+
+        # Use candle time if it exists
+        plot_x = candle_time if candle_time in df['timestamp'].values else stop_time
+
+        combined_fig.add_trace(go.Scatter(
+            x=[plot_x],
+            y=[stop_price],
+            mode='markers+text',
+            marker=dict(color='orange', size=12, symbol='triangle-down'),
+            text=[f"SL {strat}"],
+            textposition='bottom center',
+            name=f"SL-{strat}",
+            hovertemplate=(
+                "<b>SL</b><br>"
+                f"<b>{strat}</b><br>"
+                f"<b>Price: {stop_price:.2f}</b>"
+                "<extra></extra>"
+            ),
+            showlegend=False
+        ), row=1, col=1)
+
+    # === BUY CLOSE SIGNALS ===
+    for _, sig in buy_close_signals.iterrows():
+        buy_time = sig['datetime']
+        strat = sig['strategy']
+        price = sig['price']
+        
+        # Floor to candle start (same as stop-loss)
+        if interval == 1:
+            candle_time = buy_time.floor('T')
+        else:
+            mins = buy_time.minute
+            floored = (mins // interval) * interval
+            candle_time = buy_time.replace(minute=floored, second=0, microsecond=0)
+            
+        # Use candle time if it exists in chart data
+        plot_x = candle_time if candle_time in df['timestamp'].values else buy_time    
+        
+        combined_fig.add_trace(go.Scatter(
+            x=[plot_x],
+            y=[price],
+            mode='markers+text',
+            marker=dict(color='blue', size=12, symbol='triangle-up'),
+            text=[strat],
+            textposition='top center',
+            name=strat,
+            hovertemplate=(
+                f"<b>{strat}</b><br>"
+                f"<b>Buy Close</b><br>"
+                f"<b>Price: {price:.2f}</b>"
+                "<extra></extra>"
+            ),
+            showlegend=False
+        ), row=1, col=1)
+
+    # === VOLUME BAR ===
+    colors = ['green' if c > o else 'red' for c, o in zip(df['close'], df['open'])]
+    combined_fig.add_trace(go.Bar(
+        x=df['timestamp'], y=df['volume'],
+        name='Volume', marker_color=colors, opacity=0.5
+    ), row=2, col=1)
+
+    # === MARKET HOURS SHADING ===
+    today = df['timestamp'].iloc[0].date()
+    market_open = pd.Timestamp(today) + pd.Timedelta('9:30:00')
+    market_close = pd.Timestamp(today) + pd.Timedelta('16:00:00')
     combined_fig.add_vrect(
         x0=market_open, x1=market_close,
         fillcolor="Orange", opacity=0.3,
         layer="below", line_width=0
-    )    
-        
+    )
 
-    # Add volume bar chart to the second row
-    colors = ['green' if df['close'].iloc[i] > df['open'].iloc[i] else 'red' for i in range(len(df))]
-    combined_fig.add_trace(go.Bar(
-        x=df['timestamp'],
-        y=df['volume'],
-        name='Volume',
-        marker_color=colors,
-        opacity=0.5
-    ), row=2, col=1)
-
-    # Update layout
+    # === LAYOUT ===
     combined_fig.update_layout(
         title=title,
-        xaxis_title='Time',
-        yaxis_title='Price',
-        xaxis2_title='Time',
-        yaxis2_title='Volume',
+        xaxis_title='Time', yaxis_title='Price',
+        xaxis2_title='Time', yaxis2_title='Volume',
         xaxis_rangeslider_visible=False,
         dragmode='pan',
         yaxis=dict(fixedrange=False),
         showlegend=False,
         height=900,
-        autosize=True
+        autosize=True,
+        
+        # ADD CROSSHAIR HERE
+        hovermode='x unified',           # Shows one tooltip for all traces
+        spikedistance=1000             # How far the spike extends
     )
-    combined_fig.update_yaxes(showgrid=False, row=1, col=1)
-    combined_fig.update_yaxes(showgrid=True, row=2, col=1)
+    combined_fig.update_xaxes(
+        showspikes=True,
+        spikemode='across',
+        spikesnap='cursor',
+        spikecolor='gray',
+        spikethickness=1,
+        showgrid=False, row=1, col=1
+    )
+
+    combined_fig.update_yaxes(
+        showspikes=True,
+        spikemode='across',
+        spikesnap='cursor',
+        spikecolor='gray',
+        spikethickness=1,
+        showgrid=False, row=1, col=1
+    )
 
     return combined_fig
-
 
 # Initialize the Dash app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 app.layout = html.Div([
     dcc.Store(id='selected-chart', data={'ticker': None, 'interval': '1min'}),
+    
+     # Top: Chart area
+    html.Div(id='chart-viewer', style={'height': '80vh', 'width': '100%'}),
+
+    # Bottom: Always-visible ticker buttons
+    html.Div(id='chart-links', style={
+        'position': 'fixed',
+        'bottom': '0',
+        'left': '0',
+        'width': '100%',
+        'backgroundColor': 'white',
+        'padding': '10px',
+        'borderTop': '2px solid #ccc',
+        'overflowX': 'auto',
+        'zIndex': 1000,
+        'display': 'flex',
+        'flexWrap': 'wrap',
+        'gap': '10px',
+        'justifyContent': 'center'
+    }),
     dcc.Interval(
         id='interval-component',
         interval=60*1000,  # in milliseconds (update every 1 minute)
         n_intervals=0
     ),
-    html.Div(id='chart-viewer', style={'height': '90vh'}),
-    html.Div(id='chart-links', style={'display': 'flex', 'flexWrap': 'wrap', 'justifyContent': 'center', 'gap': '10px'})
-], style={'height': '100vh'})
+    
+], style={'height': '100vh', 'paddingBottom': '100px'})  # Make room for fixed bar
 
 @app.callback(
     Output('chart-links', 'children'),
@@ -210,16 +323,16 @@ def generate_chart_links(n):
     
     # Unpack the signals tuple returned by fetch_signals
     sell_signals = fetch_trade_signals(engine)
-    stop_loss_signals, buy_close_signals = fetch_stop_buy_signals(engine)
+    
     
     tickers = ohlc_1min['ticker'].unique()
     links = []
     for ticker in tickers:
         # Filter signals for this ticker
         signals_1min = sell_signals[(sell_signals['ticker'] == ticker) & 
-                                    (sell_signals['strategy'].isin(['1Min', '1Minco', '1Minde']))]
+                                    (sell_signals['strategy'].isin(['1Min', '1Minco', '1Minde', 'limit', '1Min-2g2r', '1Min-belowsma', 'stop']))]
         signals_5min = sell_signals[(sell_signals['ticker'] == ticker) & 
-                                    (sell_signals['strategy'].isin(['5Min', '5Minco', '5Minde', 'limit']))]
+                                    (sell_signals['strategy'].isin(['5Min', '5Minco', '5Minde', 'limit', '5Min-2g2r', '5Min-belowsma', 'market', 'stop']))]
         
         link_style_1min = {'color': 'red'} if not signals_1min.empty else {}
         link_style_5min = {'color': 'red'} if not signals_5min.empty else {}
@@ -259,60 +372,49 @@ def update_charts(n, selected_chart):
     ohlc_1min = fetch_data(engine, 'ohlc_1min')
     ohlc_5min = fetch_data(engine, 'ohlc_5min')
     sell_signals = fetch_trade_signals(engine)
-    stop_loss_signals, buy_close_signals = fetch_stop_buy_signals(engine)
+
+    ticker = selected_chart.get('ticker')
+    interval = selected_chart.get('interval', '1min')
+
+    # Default ticker if none selected
+    if not ticker or ticker not in ohlc_1min['ticker'].unique():
+        if ohlc_1min.empty:
+            return html.Div("No data available", style={'textAlign': 'center', 'marginTop': '100px'})
+        ticker = ohlc_1min['ticker'].iloc[0]
+
+    stop_loss_signals, buy_close_signals = fetch_stop_buy_signals(engine, ticker)
+
     
-    tickers = ohlc_1min['ticker'].unique()
+    
 
-    if not selected_chart['ticker']:
-        selected_chart = {'ticker': tickers[0], 'interval': '1min'}
-
-    ticker = selected_chart['ticker']
-    interval = selected_chart['interval']
-
+    # Build chart
     if interval == '1min':
         df = ohlc_1min[ohlc_1min['ticker'] == ticker].copy()
-        
-        # Filter sell signals for 1-minute chart (based on strategy)
         filtered_sell_signals = sell_signals[
             (sell_signals['ticker'] == ticker) & 
-            (sell_signals['strategy'].isin(['1Min', '1Minco', '1Minde']))
+            (sell_signals['strategy'].isin(['1Min', '1Minco', '1Minde', 'limit', '1Min-2g2r', '1Min-belowsma', 'market', 'stop']))
         ]
-        
-        # Do not filter Stop Loss and Buy Close signals by strategy
-        filtered_stop_loss_signals = stop_loss_signals[stop_loss_signals['ticker'] == ticker]
-        filtered_buy_close_signals = buy_close_signals[buy_close_signals['ticker'] == ticker]
-        
-        fig = plot_chart(
-            df, 
-            filtered_sell_signals, 
-            filtered_stop_loss_signals, 
-            filtered_buy_close_signals, 
-            f'{ticker} 1-Minute Chart'
-        )
     else:
         df = ohlc_5min[ohlc_5min['ticker'] == ticker].copy()
-        
-        # Filter sell signals for 5-minute chart (based on strategy)
         filtered_sell_signals = sell_signals[
             (sell_signals['ticker'] == ticker) & 
-            (sell_signals['strategy'].isin(['5Min', '5Minco', '5Minde', 'Limit']))
+            (sell_signals['strategy'].isin(['5Min', '5Minco', '5Minde', 'limit', '5Min-2g2r', '5Min-belowsma', 'market', 'stop']))
         ]
-        
-        # Do not filter Stop Loss and Buy Close signals by strategy
-        filtered_stop_loss_signals = stop_loss_signals[stop_loss_signals['ticker'] == ticker]
-        filtered_buy_close_signals = buy_close_signals[buy_close_signals['ticker'] == ticker]
-        
-        fig = plot_chart(
-            df, 
-            filtered_sell_signals, 
-            filtered_stop_loss_signals, 
-            filtered_buy_close_signals, 
-            f'{ticker} 5-Minute Chart'
-        )
 
-    return html.Div([
-        dcc.Graph(figure=fig, config={'scrollZoom': True}, style={'height': '90vh', 'width': '100%'}),
-    ], style={'height': '90vh', 'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center'})
+    # No need to re-filter stop/buy — already filtered by ticker in fetch
+    fig = plot_chart(
+        df, 
+        filtered_sell_signals, 
+        stop_loss_signals, 
+        buy_close_signals, 
+        f'{ticker} {interval.capitalize()} Chart'
+    )
+
+    return dcc.Graph(
+        figure=fig,
+        config={'scrollZoom': True, 'displayModeBar': True},
+        style={'height': '100%', 'width': '100%'}
+    )
 
 if __name__ == '__main__':
     app.run_server(debug=True, port=8050)

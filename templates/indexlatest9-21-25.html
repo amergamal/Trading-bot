@@ -21,6 +21,21 @@
         #live-trading-table input#time {
             min-width: 140px; /* Wider for date-time */
         }
+        .subtable-row { display: none; } /* Hide subtable by default */
+        .ticker-clickable { cursor: pointer; text-decoration: underline; } /* Style for clickable ticker */
+        .located-shares-subtable { margin: 10px; } /* Style for subtable */
+        /* New styles for subtable */
+        .located-shares-subtable td, .located-shares-subtable th {
+            height: 38px; /* Matches default Bootstrap table row height in #live-trading-table */
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        .located-shares-subtable td:nth-child(3), .located-shares-subtable th:nth-child(3) { /* Price/Sh */
+            width: 150px; /* Matches original Notes width */
+        }
+        .located-shares-subtable td:nth-child(6), .located-shares-subtable th:nth-child(6) { /* Notes */
+            width: 90px; /* Matches original Price per Share width */
+        }
     </style>
 </head>
 <body>
@@ -38,10 +53,10 @@
                         <input type="text" class="form-control" name="tickers[]" placeholder="Ticker">
                     </div>
                     <div class="col">
-                        <input type="number" step="0.01" class="form-control" name="risk_1m[]" placeholder="1 Min Risk (%)">
+                        <input type="number" step="0.01" class="form-control" name="risk_1m[]" placeholder="1 Min Risk (%)" value="0.5">
                     </div>
                     <div class="col">
-                        <input type="number" step="0.01" class="form-control" name="risk_5m[]" placeholder="5 Min Risk (%)">
+                        <input type="number" step="0.01" class="form-control" name="risk_5m[]" placeholder="5 Min Risk (%)" value="1">
                     </div>
                     <div class="col">
                         <input type="number" class="form-control" name="rsi_1m[]" placeholder="1 Min RSI" value="50" readonly>
@@ -85,6 +100,7 @@
                             <th>Stop Loss</th>
                             <th>SL%</th>
                             <th>HOD</th>
+                            <th>Spike%</th> <!-- New column -->
                             <th>Date Time</th>
                             <th>Strategy</th>
                             <th>Actions</th>
@@ -341,6 +357,7 @@
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.31.3/js/jquery.tablesorter.min.js"></script>
     <script>
         $(document).ready(function() {
             var socket = io({
@@ -349,6 +366,9 @@
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000
             });
+
+            // Initialize TableSorter for Active Trades table
+            $('#active-trades-table').tablesorter();
 
             // Debounce function
             function debounce(func, wait) {
@@ -397,7 +417,7 @@
             const debouncedLoadTickers = debounce(loadTickers, 500);
             socket.on('update_tickers', function(data) {
                 console.log('Received update_tickers:', data);
-                debouncedLoadTickers();
+                loadTickers(); // Directly call loadTickers without debouncing
             });
 
             socket.on('ticker_removed', function(data) {
@@ -538,46 +558,108 @@
                 }
             });
 
-            socket.on('active_trade_update', function(trade) {
-                console.log('Received active_trade_update:', trade);
-                const tbody = $('#active-trades-table tbody');
-                const existingRow = tbody.find(`tr td:first-child:contains('${trade.tradeID}')`);
-                const pnlPercent = ((trade.entry_price - (trade.last_price || 0)) / trade.entry_price * 100).toFixed(2);
+                        socket.on('connect', function() {
+                console.log('Connected to server, SocketIO ID:', socket.id);
+                $('#status').text('Connected to server').css('color', 'green');
+            });
 
-                if (existingRow.length) {
-                    existingRow.parent().html(`
-                        <td>${trade.tradeID}</td>
-                        <td>${trade.time}</td>
-                        <td>${trade.strategy}</td>
-                        <td>${trade.ticker}</td>
-                        <td>${trade.shares}</td>
-                        <td>${trade.entry_price}</td>
-                        <td>${trade.last_price || ''}</td>
-                        <td>${trade.target ? trade.target.toFixed(2) : ''}</td>
-                        <td>${trade.stop_loss}</td>
-                        <td>${trade.lu_price || ''}</td>
-                        <td>${parseFloat(trade.unrealized).toFixed(2)}</td>
-                        <td>${pnlPercent}%</td>
-                        <td><button class="btn btn-success" onclick="closeTrade('${trade.ticker}', '${trade.tradeID}')">Close</button></td>
-                    `);
+            socket.on('disconnect', function() {
+                console.log('Disconnected from server, SocketIO ID:', socket.id);
+                $('#status').text('Disconnected from server').css('color', 'red');
+            });
+
+            socket.on('reconnect', function() {
+                console.log('Reconnected to server, SocketIO ID:', socket.id);
+                $('#status').text('Connected to server').css('color', 'green');
+                loadTickers();
+                loadTradeSignals();
+                loadSellMarket();
+                loadStopMarket();
+                loadReplaceStop();
+                loadExecutedStop();
+                loadBuyMarket();
+                loadActiveTrades();
+                loadClosedTrades();
+                loadTradeSummary();
+            });
+
+            socket.on('reconnect_error', function(error) {
+                console.error('Reconnection error:', error);
+            });
+
+                        socket.on('active_trade_update', function(data) {
+                console.log('Full active_trade_update payload:', JSON.stringify(data));
+                let trade = data;
+                if (Array.isArray(data)) {
+                    if (data.length === 0) {
+                        console.error('Received empty array in active_trade_update');
+                        return;
+                    }
+                    trade = data[0];
+                    console.warn('Received array in active_trade_update, using first element:', JSON.stringify(trade));
+                }
+                if (!trade || typeof trade !== 'object') {
+                    console.error('Invalid trade object received:', JSON.stringify(trade));
+                    return;
+                }
+                if (!trade.tradeID || trade.tradeID === 'undefined' || trade.tradeID.trim() === '') {
+                    console.error('Invalid or missing tradeID in active_trade_update:', JSON.stringify(trade));
+                    return;
+                }
+                console.log('Received active_trade_update for tradeID:', trade.tradeID, JSON.stringify(trade));
+                const tbody = $('#active-trades-table tbody');
+                const row = tbody.find(`tr td:first-child:contains('${trade.tradeID}')`);
+                if (row.length) {
+                    try {
+                        console.log(`Updating row for tradeID ${trade.tradeID}`);
+                        row.find('td:eq(1)').text(trade.time || 'N/A');
+                        row.find('td:eq(2)').text(trade.strategy || 'N/A');
+                        row.find('td:eq(3)').text(trade.ticker || 'N/A');
+                        row.find('td:eq(4)').text(trade.shares || 'N/A');
+                        row.find('td:eq(5)').text(trade.entry_price !== null && !isNaN(trade.entry_price) ? parseFloat(trade.entry_price).toFixed(2) : 'N/A');
+                        row.find('td:eq(6)').text(trade.last_price !== null && !isNaN(trade.last_price) ? parseFloat(trade.last_price).toFixed(2) : 'N/A');
+                        row.find('td:eq(7)').text(trade.target !== null && !isNaN(trade.target) ? parseFloat(trade.target).toFixed(2) : 'N/A');
+                        row.find('td:eq(8)').text(trade.stop_loss !== null && !isNaN(trade.stop_loss) ? parseFloat(trade.stop_loss).toFixed(2) : 'N/A');
+                        row.find('td:eq(9)').text(trade.lu_price !== null && !isNaN(trade.lu_price) ? parseFloat(trade.lu_price).toFixed(2) : 'N/A');
+                        row.find('td:eq(10)').text(trade.unrealized !== null && !isNaN(trade.unrealized) ? parseFloat(trade.unrealized).toFixed(2) : 'N/A');
+                        const entryPrice = parseFloat(trade.entry_price) || 0;
+                        const shares = parseFloat(trade.shares) || 0;
+                        const unrealized = parseFloat(trade.unrealized) || 0;
+                        const pnlPercent = (entryPrice && shares) ? ((unrealized / (entryPrice * shares)) * 100).toFixed(2) : 'N/A';
+                        row.find('td:eq(11)').text(pnlPercent !== 'N/A' ? `${pnlPercent}%` : 'N/A');
+                        console.log(`Updated columns for tradeID ${trade.tradeID}:`, {
+                            last_price: trade.last_price,
+                            lu_price: trade.lu_price,
+                            unrealized: trade.unrealized,
+                            pnlPercent: pnlPercent
+                        });
+                        // Force table re-render
+                        $('#active-trades-table').trigger('update');
+                    } catch (e) {
+                        console.error(`Error updating row for tradeID ${trade.tradeID}:`, e);
+                    }
                 } else {
+                    console.log(`No row found for tradeID ${trade.tradeID}, adding new row`);
                     tbody.append(`
                         <tr>
                             <td>${trade.tradeID}</td>
-                            <td>${trade.time}</td>
-                            <td>${trade.strategy}</td>
-                            <td>${trade.ticker}</td>
-                            <td>${trade.shares}</td>
-                            <td>${trade.entry_price}</td>
-                            <td>${trade.last_price || ''}</td>
-                            <td>${trade.target ? trade.target.toFixed(2) : ''}</td>
-                            <td>${trade.stop_loss}</td>
-                            <td>${trade.lu_price || ''}</td>
-                            <td>${parseFloat(trade.unrealized).toFixed(2)}</td>
-                            <td>${pnlPercent}%</td>
+                            <td>${trade.time || 'N/A'}</td>
+                            <td>${trade.strategy || 'N/A'}</td>
+                            <td>${trade.ticker || 'N/A'}</td>
+                            <td>${trade.shares || 'N/A'}</td>
+                            <td>${trade.entry_price !== null && !isNaN(trade.entry_price) ? parseFloat(trade.entry_price).toFixed(2) : 'N/A'}</td>
+                            <td>${trade.last_price !== null && !isNaN(trade.last_price) ? parseFloat(trade.last_price).toFixed(2) : 'N/A'}</td>
+                            <td>${trade.target !== null && !isNaN(trade.target) ? parseFloat(trade.target).toFixed(2) : 'N/A'}</td>
+                            <td>${trade.stop_loss !== null && !isNaN(trade.stop_loss) ? parseFloat(trade.stop_loss).toFixed(2) : 'N/A'}</td>
+                            <td>${trade.lu_price !== null && !isNaN(trade.lu_price) ? parseFloat(trade.lu_price).toFixed(2) : 'N/A'}</td>
+                            <td>${trade.unrealized !== null && !isNaN(trade.unrealized) ? parseFloat(trade.unrealized).toFixed(2) : 'N/A'}</td>
+                            <td>${pnlPercent !== 'N/A' ? `${pnlPercent}%` : 'N/A'}</td>
                             <td><button class="btn btn-success" onclick="closeTrade('${trade.ticker}', '${trade.tradeID}')">Close</button></td>
                         </tr>
                     `);
+                    console.log(`Added new row for tradeID ${trade.tradeID}`);
+                    // Force table re-render
+                    $('#active-trades-table').trigger('update');
                 }
             });
 
@@ -831,76 +913,208 @@
                     const allTickersTableBody = $('#all-ticker-monitor-table tbody');
                     const liveTradingTableBody = $('#live-trading-table tbody');
 
-                    // Create a set of existing tickers to avoid duplicates
-                    const existingTickers = new Set(
-                        allTickersTableBody.find('tr').map((i, row) => $(row).find('td:first').text()).get()
-                    );
+                    
+
+                    // Clear existing rows to rebuild in order
+                    
+                    allTickersTableBody.empty();
+                    liveTradingTableBody.empty();
+
+
 
                     // Append only new tickers
                     tickers.forEach(ticker => {
-                        if (!existingTickers.has(ticker.ticker)) {
-                            const tickerUpper = ticker.ticker.toUpperCase();
-                            allTickersTableBody.append(`
-                                <tr>
-                                    <td>${ticker.ticker}</td>
-                                    <td>${ticker.date} ${ticker.time}</td>
-                                    <td>${ticker.risk_1m || ''}</td>
-                                    <td>${ticker.risk_5m || ''}</td>
-                                    <td>${ticker.rsi_1m || ''}</td>
-                                    <td>${ticker.rsi_5m || ''}</td>
-                                    <td><button class="btn btn-danger cancel-monitor" data-ticker="${ticker.ticker}">Cancel</button></td>
-                                </tr>
-                            `);
-                            liveTradingTableBody.append(`
-                                <tr>
-                                    <td>${ticker.ticker}</td>
-                                    <td><input type="number" step="0.01" id="risk-${tickerUpper}" class="form-control" style="width: 90px;" value="100"></td>
-                                    <td><input type="text" id="last-price-${tickerUpper}" class="form-control" style="width: 90px;" readonly></td>
-                                    <td><input type="number" id="shares-${tickerUpper}" class="form-control" style="width: 90px;"></td>
-                                    <td><input type="number" step="0.01" id="target-${tickerUpper}" class="form-control" style="width: 90px;"></td>
-                                    <td><input type="number" id="sl-${tickerUpper}" class="form-control" style="width: 90px;"></td>
-                                    <td><input type="text" id="sl-percent-${tickerUpper}" class="form-control" style="width: 90px;" readonly></td>
-                                    <td><input type="number" id="hod-${tickerUpper}" class="form-control" style="width: 90px;" readonly></td>
-                                    <td><input type="text" id="time-${tickerUpper}" class="form-control" style="width: 140px;" readonly></td>
-                                    <td>
-                                        <select id="strategy-${tickerUpper}" class="form-control" style="width: 100px;">
-                                            <option value="market">market</option>
-                                            <option value="limit">limit</option>
-                                            <option value="target">target</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <button class="btn btn-info" onclick="updateRow('${tickerUpper}')">Update</button>
-                                        <button class="btn btn-success" onclick="sendOrder('${tickerUpper}')">Send</button>
-                                    </td>
-                                </tr>
-                            `);
-                        }
+                        
+                        const tickerUpper = ticker.ticker.toUpperCase();
+                        allTickersTableBody.append(`
+                            <tr>
+                                <td>${ticker.ticker}</td>
+                                <td>${ticker.date} ${ticker.time}</td>
+                                <td>${ticker.risk_1m || ''}</td>
+                                <td>${ticker.risk_5m || ''}</td>
+                                <td>${ticker.rsi_1m || ''}</td>
+                                <td>${ticker.rsi_5m || ''}</td>
+                                <td><button class="btn btn-danger cancel-ticker" data-ticker="${ticker.ticker}">Cancel</button></td>
+                            </tr>
+                        `);
                     });
 
-                    // Remove tickers that are no longer in the data
-                    allTickersTableBody.find('tr').each(function() {
-                        const ticker = $(this).find('td:first').text();
-                        if (!tickers.some(t => t.ticker === ticker)) {
-                            $(this).remove();
-                        }
+                       
+                    
+                    // Append only new tickers to Live Trading table
+                    tickers.forEach(ticker => {
+                        const tickerUpper = ticker.ticker.toUpperCase();
+                        
+                        liveTradingTableBody.append(`
+                            <tr class="main-row" id="live-row-${tickerUpper}">
+                                <td class="ticker-clickable" data-ticker="${tickerUpper}">${ticker.ticker}</td>
+                                <td><input type="number" step="0.01" id="risk-${tickerUpper}" class="form-control" style="width: 90px;" value="200"></td>
+                                <td><input type="text" id="last-price-${tickerUpper}" class="form-control" style="width: 90px;" readonly></td>
+                                <td><input type="number" id="shares-${tickerUpper}" class="form-control" style="width: 90px;"></td>
+                                <td><input type="number" step="0.01" id="target-${tickerUpper}" class="form-control"></td>
+                                <td><input type="number" id="sl-${tickerUpper}" class="form-control"></td>
+                                <td><input type="text" id="sl-percent-${tickerUpper}" class="form-control" readonly></td>
+                                <td><input type="number" id="hod-${tickerUpper}" class="form-control" readonly></td>
+                                <td><input type="text" id="spike-${tickerUpper}" class="form-control" readonly></td> <!-- New Spike% field -->
+                                <td><input type="text" id="time-${tickerUpper}" class="form-control" style="width: 140px;" readonly></td>
+                                <td>
+                                    <select id="strategy-${tickerUpper}" class="form-control">
+                                        <option value="market">Market</option>
+                                        <option value="limit">Limit</option>
+                                        <option value="target">Target</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <button class="btn btn-info update-btn" onclick="updateRow('${tickerUpper}')">Update</button>
+                                    <button class="btn btn-success send-btn" onclick="sendOrder('${tickerUpper}')">Send</button>
+                                </td>
+                            </tr>
+                            <tr class="subtable-row" id="subtable-${tickerUpper}">
+                                <td colspan="11">
+                                    <table class="table table-bordered located-shares-subtable" id="located-shares-${tickerUpper}">
+                                        <thead>
+                                            <tr>
+                                                <th>Ticker</th>
+                                                <th>Shares</th>
+                                                <th>Price/Sh</th>
+                                                <th>Total Price</th>
+                                                <th>Route</th>
+                                                <th>Notes</th>
+                                                <th>Borrowed</th>
+                                                <th>Available</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td>${ticker.ticker}</td>
+                                                <td id="subtable-shares-${tickerUpper}"></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td class="borrowed"></td>
+                                                <td class="available"></td>
+                                                <td>
+                                                    <button class="btn btn-primary locate-btn" data-ticker="${tickerUpper}">Locate</button>
+                                                    <button class="btn btn-success accept-btn" data-ticker="${tickerUpper}" disabled>Accept</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </td>
+                            </tr>
+                        `);
+                        fetchBorrowedShares(tickerUpper);
+                        syncSubtableShares(tickerUpper);
+                        // Fetch initial order data for the new row
+                        updateRow(tickerUpper);
                     });
-                    liveTradingTableBody.find('tr').each(function() {
-                        const ticker = $(this).find('td:first').text();
-                        if (!tickers.some(t => t.ticker === ticker)) {
-                            $(this).remove();
+                });
+            }
+            // Toggle subtable on ticker click
+            $(document).on('click', '.ticker-clickable', function() {
+                const ticker = $(this).data('ticker');
+                $(`#subtable-${ticker}`).toggle();
+                syncSubtableShares(ticker);
+            });
+
+            // Sync subtable shares with main row
+            function syncSubtableShares(ticker) {
+                const mainRow = $(`#live-row-${ticker}`);
+                if (!mainRow.length) {
+                    console.warn(`Main row for ticker ${ticker} not found, skipping subtable update`);
+                    return;
+                }
+
+
+                const shares = $(`#shares-${ticker}`).val() || '';
+                $(`#subtable-shares-${ticker}`).text(shares);
+                const locateBtn = $(`#located-shares-${ticker} .locate-btn`);
+                locateBtn.data('shares', shares);
+                locateBtn.prop('disabled', !shares || shares <= 0);
+            }
+
+            // Update shares in subtable when main row changes
+            $(document).on('input', '[id^="shares-"]', function() {
+                const ticker = this.id.split('-')[1];
+                syncSubtableShares(ticker);
+            });
+
+            // Locate button
+            $(document).on('click', '.locate-btn', function() {
+                const ticker = $(this).data('ticker');
+                const shares = $(this).data('shares');
+                if (!shares || shares <= 0) {
+                    alert('Please enter valid shares in the Live Trading table.');
+                    return;
+                }
+                $.ajax({
+                    url: 'http://localhost:5010/locate_shares',
+                    type: 'POST',
+                    data: { 'tickers[]': ticker, 'shares[]': shares },
+                    success: function(data) {
+                        console.log('Locate shares response:', data);
+                        if (data.located_shares && data.located_shares[0]) {
+                            updateLocatedShares(ticker, data.located_shares[0]);
+                        } else {
+                            alert('No shares located.');
                         }
-                    });
+                    },
+                    error: function(jqXHR, textStatus) {
+                        alert('Error locating shares: ' + textStatus);
+                    }
+                });
+            });
+
+            // Accept button
+            $(document).on('click', '.accept-btn', function() {
+                const ticker = $(this).data('ticker');
+                $.post('http://localhost:5010/accept_offer', { ticker: ticker }, function(data) {
+                    if (data.status === 'success') {
+                        alert(`Accepted offer for ${ticker}`);
+                        fetchBorrowedShares(ticker);
+                    } else {
+                        alert('Failed to accept offer: ' + data.message);
+                    }
+                }).fail(() => alert(`Failed to accept offer for ${ticker}`));
+            });
+
+            // Update located shares subtable
+            function updateLocatedShares(ticker, share) {
+                const row = $(`#located-shares-${ticker} tbody tr`);
+                const shares = parseInt($(`#subtable-shares-${ticker}`).text()) || parseInt(share.shares) || 0;
+                const price = parseFloat(share.price) || 0;
+                const totalCost = (price * shares).toFixed(4); // Calculate total cost
+                row.find('td:eq(2)').text(price.toFixed(4));
+                row.find('td:eq(3)').text(totalCost);
+                row.find('td:eq(4)').text(share.route);
+                row.find('td:eq(5)').text(share.note || '');
+                row.find('.accept-btn').prop('disabled', !share.price && !share.note.includes('shortable'));
+            }
+
+            // Fetch borrowed and available shares
+            function fetchBorrowedShares(ticker) {
+                $.get('http://localhost:5010/get_borrowed_shares', function(data) {
+                    console.log('Borrowed shares response:', data);
+                    const share = data.borrowed_shares.find(s => s.ticker === ticker) || { borrowed_shares: 0, available_shares: 0 };
+                    const row = $(`#located-shares-${ticker} tbody tr`);
+                    row.find('.borrowed').text(share.borrowed_shares);
+                    row.find('.available').text(share.available_shares);
+                }).fail(() => {
+                    $(`#located-shares-${ticker} .borrowed`).text('0');
+                    $(`#located-shares-${ticker} .available`).text('0');
                 });
             }
 
             // Delegated event listener for cancel-monitor buttons
-            $(document).on('click', '.cancel-monitor', function() {
+            $(document).on('click', '.cancel-ticker', function() {
                 var ticker = $(this).data('ticker');
                 $.post('/remove_ticker', { ticker: ticker }, function(data) {
                     if (data.status === 'success') {
                         loadTickers();
                         socket.emit('ticker_removed', { ticker: ticker });
+                        console.log(`Cancelled ticker ${ticker}`);
                     } else {
                         alert('Failed to remove ticker');
                     }
@@ -916,11 +1130,13 @@
                         if (data.status === 'success') {
                             $(`#last-price-${ticker}`).val(data.last_price.toFixed(2));
                             $(`#hod-${ticker}`).val(data.hod ? data.hod.toFixed(2) : '');
-                            $(`#time-${ticker}`).val(data.time || new Date().toISOString().slice(0, 19).replace('T', ' '));
+                            $(`#spike-${ticker}`).val(data.spike ? data.spike.toFixed(2) + '%' : ''); // Populate Spike%
+                            $(`#time-${ticker}`).val(data.time);
                             $(`#shares-${ticker}`).val('');
                             $(`#target-${ticker}`).val(data.target ? data.target.toFixed(2) : '');
                             $(`#sl-${ticker}`).val(data.stop_loss.toFixed(2));
                             calculateSharesAndSLPercent(ticker, data.last_price, data.stop_loss);
+                            syncSubtableShares(ticker);
                         } else {
                             alert('Error: ' + data.error);
                         }
@@ -941,9 +1157,16 @@
                     $(`#shares-${ticker}`).val(shares);
                     const slPercent = Math.round(((stopLoss - lastPrice) / lastPrice) * 100);
                     $(`#sl-percent-${ticker}`).val(slPercent + '%');
+                    // Calculate target: 2x the stop loss distance below last price
+                    const stopLossDistance = stopLoss - lastPrice;
+                    const target = lastPrice - (2 * stopLossDistance);
+                    $(`#target-${ticker}`).val(target.toFixed(2));
+                    syncSubtableShares(ticker);
                 } else {
                     $(`#shares-${ticker}`).val('');
                     $(`#sl-percent-${ticker}`).val('');
+                    $(`#target-${ticker}`).val('');
+                    syncSubtableShares(ticker);
                 }
             }
 
@@ -1247,7 +1470,7 @@
                                 <td>${trade.RR ? trade.RR.toFixed(2) : ''}</td>
                                 <td>${trade.reason}</td>
                                 <td>${parseFloat(trade.realized).toFixed(2)}</td>
-                            </tr>
+                        </tr>
                         `);
                     });
                 });
@@ -1304,10 +1527,10 @@
                             <input type="text" class="form-control" name="tickers[]" placeholder="Ticker">
                         </div>
                         <div class="col">
-                            <input type="number" step="0.01" class="form-control" name="risk_1m[]" placeholder="1 Min Risk (%)">
+                            <input type="number" step="0.01" class="form-control" name="risk_1m[]" placeholder="1 Min Risk (%)" value="0.5">
                         </div>
                         <div class="col">
-                            <input type="number" step="0.01" class="form-control" name="risk_5m[]" placeholder="5 Min Risk (%)">
+                            <input type="number" step="0.01" class="form-control" name="risk_5m[]" placeholder="5 Min Risk (%)" value="1">
                         </div>
                         <div class="col">
                             <input type="number" class="form-control" name="rsi_1m[]" placeholder="1 Min RSI" value="50" readonly>
@@ -1343,6 +1566,9 @@
                         if (data.status === 'success') {
                             loadTickers();
                             $('#trading-form')[0].reset();
+                            // Emit socket event to notify all clients
+                            socket.emit('ticker_added', { tickers: formData.getAll('tickers[]') });
+                            
                         } else {
                             alert('Error adding ticker: ' + data.error);
                         }
@@ -1375,6 +1601,20 @@
                     }
                 });
             };
+            socket.on('update_order_data', function(data) {
+                console.log('Received update_order_data:', data);
+                const ticker = data.ticker.toUpperCase();
+                const row = $(`#live-row-${ticker}`);
+                if (row.length) {
+                    $(`#last-price-${ticker}`).val(data.last_price ? data.last_price.toFixed(2) : '');
+                    $(`#hod-${ticker}`).val(data.hod ? data.hod.toFixed(2) : '');
+                    $(`#spike-${ticker}`).val(data.spike ? data.spike.toFixed(2) + '%' : '');
+                    $(`#target-${ticker}`).val(data.target ? data.target.toFixed(2) : '');
+                    $(`#sl-${ticker}`).val(data.stop_loss ? data.stop_loss.toFixed(2) : '');
+                    calculateSharesAndSLPercent(ticker, data.last_price, data.stop_loss);
+                    syncSubtableShares(ticker);
+                }
+            });
 
             // Initial loads
             loadTickers();
@@ -1388,10 +1628,7 @@
             loadClosedTrades();
             loadTradeSummary();
             updateStatus();
-            // Reduced polling
             setInterval(updateStatus, 60000);
-            // Removed polling for trade signals to rely on SocketIO
-            // setInterval(loadTradeSignals, 60000);
         });
     </script>
 </body>

@@ -104,6 +104,11 @@
                 `);
             });
 
+            // Make all ticker inputs uppercase (works for dynamic rows too)
+            $(document).on('input', 'input[name="tickers[]"]', function() {
+                this.value = this.value.toUpperCase().trim();
+            });
+
             $(document).on('click', '.remove-row', function() {
                 $(this).closest('.form-row').remove();
             });
@@ -118,6 +123,7 @@
                     processData: false,
                     contentType: false,
                     success: function(data) {
+                        console.log('Locate shares response:', data); // Debug response
                         populateLocatedShares(data.located_shares);
                         fetchBorrowedShares();  // Refresh Borrowed Shares after locating shares
                     },
@@ -128,6 +134,7 @@
             });
 
             function populateLocatedShares(locatedShares) {
+                console.log('Populating located shares:', locatedShares); // Debug shares
                 const tbody = $('#located-shares-table tbody');
                 tbody.empty();
                 locatedShares.forEach(share => {
@@ -138,7 +145,7 @@
                             <td>${share.price}</td>
                             <td>${share.total_cost}</td>
                             <td>${share.route}</td>
-                            <td>Offered</td>
+                            <td>${share.note || ''}</td> <!-- Use share.note -->
                             <td><button class="btn btn-success accept-offer" data-ticker="${share.ticker}">Accept</button></td>
                         </tr>
                     `);
@@ -158,6 +165,7 @@
             });
 
             function addAcceptedShares(acceptedShare) {
+                console.log('Accepted share:', acceptedShare); // Debug accepted share
                 const tbody = $('#accepted-shares-table tbody');
                 tbody.append(`
                     <tr>
@@ -173,6 +181,7 @@
 
             function fetchBorrowedShares() {
                 $.get('/get_borrowed_shares', function(data) {
+                    console.log('Borrowed shares response:', data); // Debug response
                     if (data.borrowed_shares) {
                         populateBorrowedShares(data.borrowed_shares);
                     } else {
@@ -182,6 +191,7 @@
             }
 
             function populateBorrowedShares(borrowedShares) {
+                console.log('Populating borrowed shares:', borrowedShares); // Debug shares
                 const tbody = $('#borrowed-shares-table tbody');
                 tbody.empty();
                 borrowedShares.forEach(share => {

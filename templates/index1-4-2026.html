@@ -1,0 +1,2448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Trade Dashboard</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .target-input {
+            min-width: 100px !important;
+            width: 100%;
+        }
+        /* Optional: Make Target column wider */
+        #active-trades-table th:nth-child(8),
+        #active-trades-table td:nth-child(8) {
+            min-width: 110px;
+        }
+    </style>
+    <style>
+        #current-time {
+            width: auto;
+            min-width: 160px;
+            padding: 6px 12px;
+        }
+        #live-trading-table tr.main-row.focused {
+            background-color: #e8f5e9 !important;
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+            transition: all 0.2s ease;
+        }
+        #live-trading-table td {
+            white-space: nowrap;
+        }
+        #live-trading-table input.form-control {
+            min-width: 80px;
+            box-sizing: border-box;
+        }
+        .alert-controls button {
+            font-size: 10px;
+            padding: 2px 6px;
+            margin: 0 2px;
+        }
+        .subtable-row { display: none; }
+        .ticker-clickable { cursor: pointer; text-decoration: underline; }
+        .located-shares-subtable { margin: 10px; }
+        .located-shares-subtable td, .located-shares-subtable th {
+            height: 38px;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        .located-shares-subtable td:nth-child(3), .located-shares-subtable th:nth-child(3) { width: 150px; }
+        .located-shares-subtable td:nth-child(6), .located-shares-subtable th:nth-child(6) { width: 90px; }
+        #active-trades-table .actions-cell {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+            min-width: 180px;
+            padding: 5px;
+        }
+        #active-trades-table .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        #active-trades-table .btn-success {
+            background-color: #28a745 !important;
+            color: white !important;
+        }
+        #active-trades-table .btn-info {
+            background-color: #17a2b8 !important;
+            color: white !important;
+        }
+        #stoploss-table .price-input {
+            width: 90px;
+        }
+        #stoploss-table .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        #stoploss-table .replace-btn {
+            background-color: #007bff;
+            color: white;
+        }
+        #stoploss-table .replace-btn:hover {
+            background-color: #0056b3;
+        }
+        /* PENDING ORDERS TABLE: Better column widths and input fitting */
+        #pending-orders-table {
+            table-layout: auto; /* Allows columns to size based on content */
+            width: 100%;
+        }
+
+    /* Make numeric input fields wider and consistent */
+    #pending-orders-table input[type="number"],
+    #pending-orders-table input[type="text"] {
+        width: 100%;
+        min-width: 90px;     /* Prevents them from becoming too tiny */
+        box-sizing: border-box;
+        text-align: right;   /* Nice alignment for numbers */
+        padding: 6px 8px;
+    }
+
+    /* Specific column tweaks */
+    #pending-orders-table th:nth-child(1),  /* Ticker */
+    #pending-orders-table td:nth-child(1) {
+        width: 100px;
+        min-width: 100px;
+    }
+
+    #pending-orders-table th:nth-child(2),  /* Risk $ */
+    #pending-orders-table td:nth-child(2),
+    #pending-orders-table th:nth-child(3),  /* Price */
+    #pending-orders-table td:nth-child(3),
+    #pending-orders-table th:nth-child(4),  /* Shares */
+    #pending-orders-table td:nth-child(4),
+    #pending-orders-table th:nth-child(5),  /* Target */
+    #pending-orders-table td:nth-child(5),
+    #pending-orders-table th:nth-child(6),  /* Stop Loss */
+    #pending-orders-table td:nth-child(6),
+    #pending-orders-table th:nth-child(7) { /* HOD */
+        width: 110px;
+        min-width: 110px;
+    }
+
+    /* Strategy dropdown */
+    #pending-orders-table th:nth-child(8),
+    #pending-orders-table td:nth-child(8) {
+        width: 120px;
+        min-width: 120px;
+    }
+
+    /* Time */
+    #pending-orders-table th:nth-child(9),
+    #pending-orders-table td:nth-child(9) {
+        width: 130px;
+        min-width: 130px;
+    }
+
+    /* Actions column - horizontal buttons */
+    #pending-orders-table th:last-child,
+    #pending-orders-table td:last-child {
+        width: 240px;
+        min-width: 240px;
+        white-space: nowrap;
+        text-align: center;
+    }
+
+    #pending-orders-table .btn-sm {
+        margin: 0 4px;
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+</style></head>
+<body>
+    <div class="container">
+        <h1 class="mt-5">Trade Dashboard</h1>
+        <div class="d-flex align-items-center mb-3">
+            <a href="/trade_report" class="btn btn-secondary mr-3">View Trade Reports</a>
+            <a href="/candle_conditions" class="btn btn-info mr-3" target="_blank">Candle Conditions</a>
+            <input type="text" id="current-time" class="form-control" style="width: 140px;" readonly>
+
+        <!-- THIS IS ALL YOU NEED IN THE MAIN PAGE -->
+        <a href="/manual_trade" class="btn btn-success ml-auto" target="_blank">
+            <strong>+ Add Manual Trade</strong>
+        </a>
+    </div>
+    <div id="status" class="mb-3"></div>
+    <button id="connect-button" class="btn btn-primary">Connect</button>
+    <button id="disconnect-button" class="btn btn-danger">Disconnect</button>
+
+    <h2 class="mt-5">Trading Parameters</h2>
+    <form id="trading-form">
+        <div id="tickers-container">
+            <div class="form-row mb-3">
+                <div class="col"><input type="text" class="form-control" name="tickers[]" placeholder="Ticker" style="text-transform: uppercase;" 
+       oninput="this.value = this.value.toUpperCase()"></div>
+                <div class="col"><input type="number" step="0.01" class="form-control" name="risk_1m[]" placeholder="1 Min Risk (%)" value="0.5"></div>
+                <div class="col"><input type="number" step="0.01" class="form-control" name="risk_5m[]" placeholder="5 Min Risk (%)" value="1"></div>
+                <div class="col"><input type="number" step="0.01" class="form-control" name="rsi_1m[]" placeholder="1 Min RSI" value="1"></div>
+                <div class="col"><input type="number" class="form-control" name="rsi_5m[]" placeholder="5 Min RSI" value="50" readonly></div>
+                <div class="col"><button type="button" class="btn btn-danger remove-row">X</button></div>
+            </div>
+        </div>
+        <button type="button" class="btn btn-primary" id="add-row">Add Ticker</button>
+        <button type="submit" class="btn btn-success" id="start-trading">Start Trading</button>
+        <div id="loading-spinner" style="display: none; margin-top: 10px;">
+            <div class="spinner-border text-primary" role="status"><span class="sr-only">Loading...</span></div>
+        </div>
+    </form>
+
+    <div class="form-check form-switch mt-3">
+        <input class="form-check-input" type="checkbox" id="hotkeyToggle" checked>
+        <label class="form-check-label text-success" for="hotkeyToggle">
+            <strong>Hotkeys: ON</strong>
+        </label>
+    </div>
+
+    <h2 class="mt-5">Ticker Monitor</h2>
+    <ul class="nav nav-tabs" id="tickerMonitorTabs" role="tablist">
+        <li class="nav-item"><a class="nav-link active" id="live-trading-tab" data-toggle="tab" href="#live-trading" role="tab">Live Trading</a></li>
+        <li class="nav-item"><a class="nav-link" id="pending-tab" data-toggle="tab" href="#pending" role="tab">Pending</a></li>
+        <li class="nav-item"><a class="nav-link" id="all-tickers-tab" data-toggle="tab" href="#all-tickers" role="tab">All Tickers</a></li>
+    </ul>
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="live-trading" role="tabpanel">
+            <table class="table table-bordered mt-3" id="live-trading-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>R (R)</th>
+                        <th>Risk $</th>
+                        <th>Last Price</th>
+                        <th>Shares</th>
+                        <th>Target</th>
+                        <th>Stop Loss</th>
+                        <th>SL%</th>
+                        <th>HOD</th>
+                        <th>Strategy</th>
+                        <th>SL Method</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <!-- NEW PENDING TAB -->
+        <div class="tab-pane fade" id="pending" role="tabpanel">
+            <h4 class="mt-3">Pending Orders</h4>
+            <table class="table table-bordered" id="pending-orders-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Risk $</th>
+                        <th>Price</th>
+                        <th>Shares</th>
+                        <th>Target</th>
+                        <th>Stop Loss</th>
+                        <th>HOD</th>
+                        <th>Strategy</th>
+                        <th>Time</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="tab-pane fade" id="all-tickers" role="tabpanel">
+            <table class="table table-bordered mt-3" id="all-ticker-monitor-table">
+                <thead><tr><th>Ticker</th><th>Date Time</th><th>1 Min Risk (%)</th><th>5 Min Risk (%)</th><th>1 Min RSI</th><th>5 Min RSI</th><th>Cancel</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <h2 class="mt-5">Active Trades</h2>
+    <table class="table table-bordered" id="active-trades-table">
+        <thead><tr><th>Trade ID</th><th>Time</th><th>Strategy</th><th>Ticker</th><th>Shares</th><th>Entry Price</th><th>Last Price</th><th>Target</th><th>Risk</th><th>SL</th><th>LU</th><th>Unrealized</th><th>Realized</th><th>PNL%</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+    </table>
+
+    <h2 class="mt-5">Trade Signal</h2>
+    <table class="table table-bordered" id="trade-signal-table">
+        <thead><tr><th>Trade ID</th><th>Time</th><th>Strategy</th><th>Ticker</th><th>Price</th><th>Shares</th><th>Target</th><th>HOD</th><th>Risk</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+    </table>
+
+    <h2 class="mt-5">Orders</h2>
+    <table class="table table-bordered" id="orders-table">
+        <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th></tr></thead>
+        <tbody></tbody>
+    </table>
+
+    <h2 class="mt-5">StopLoss</h2>
+    <table class="table table-bordered" id="stoploss-table">
+        <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+    </table>
+
+    <h2 class="mt-5">ReplaceStop</h2>
+    <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#replacestop-collapse">Toggle Replace Stop</button>
+    <div class="collapse" id="replacestop-collapse"><div class="card card-body mt-3">
+        <table class="table table-bordered" id="replacestop-table">
+            <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div></div>
+
+    <h2 class="mt-5">CanceledStop</h2>
+    <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#canceledstop-collapse">Toggle Canceled Stop</button>
+    <div class="collapse" id="canceledstop-collapse"><div class="card card-body mt-3">
+        <table class="table table-bordered" id="canceledstop-table">
+            <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div></div>
+
+    <h2 class="mt-5">ExecutedStop</h2>
+    <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#executedstop-collapse">Toggle Executed Stop</button>
+    <div class="collapse" id="executedstop-collapse"><div class="card card-body mt-3">
+        <table class="table table-bordered" id="executedstop-table">
+            <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div></div>
+
+    <h2 class="mt-5">BuyMarket</h2>
+    <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#buymarket-collapse">Toggle Buy Close</button>
+    <div class="collapse" id="buymarket-collapse"><div class="card card-body mt-3">
+        <table class="table table-bordered" id="buymarket-table">
+            <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div></div>
+
+    <h2 class="mt-5">Closed Trades</h2>
+    <div class="collapse" id="closed-trades-collapse">
+        <table class="table table-bordered" id="closed-trades-table">
+            <thead><tr><th>Trade ID</th><th>Strategy</th><th>Ticker</th><th>Shares</th><th>Entry Price</th><th>Entry Time</th><th>Exit</th><th>Exit Time</th><th>Target</th><th>Risk</th><th>SLoss</th><th>RR</th><th>Reason</th><th>Realized</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#closed-trades-collapse">Toggle Closed Trades</button>
+
+    <h2 class="mt-5">Trade Summary</h2>
+    <div class="collapse" id="trade-summary-collapse">
+        <table class="table table-bordered" id="trade-summary-table">
+            <thead><tr><th>Signal</th><th>Total Trades</th><th>Gain</th><th>Loss</th><th>Total Risk</th><th>Total Gain/Loss</th></tr></thead>
+            <tbody>
+                <tr><td>Market</td><td id="total-trades-market">0</td><td id="total-gain-market">0</td><td id="total-loss-market">0</td><td id="total-risk-market">0</td><td id="total-gain-loss-market">0</td></tr>
+                <tr><td>Limit</td><td id="total-trades-limit">0</td><td id="total-gain-limit">0</td><td id="total-loss-limit">0</td><td id="total-risk-limit">0</td><td id="total-gain-loss-limit">0</td></tr>
+                <tr><td>Target</td><td id="total-trades-target">0</td><td id="total-gain-target">0</td><td id="total-loss-target">0</td><td id="total-risk-target">0</td><td id="total-gain-loss-target">0</td></tr>
+                <tr><td>Stop</td><td id="total-trades-stop">0</td><td id="total-gain-stop">0</td><td id="total-loss-stop">0</td><td id="total-risk-stop">0</td><td id="total-gain-loss-stop">0</td></tr>
+                <tr><td>Grand Total</td><td id="grand-total-trades">0</td><td id="grand-total-gain">0</td><td id="grand-total-loss">0</td><td id="grand-total-risk">0</td><td id="grand-total-gain-loss">0</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#trade-summary-collapse">Toggle Trade Summary</button>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<script>
+    const socket = io('http://127.0.0.1:5001', {
+        path: '/socket.io',
+        transports: ['websocket']
+    });
+
+    socket.on('connect', () => {
+        console.log('CONNECTED TO FLASK-SOCKETIO!');
+    });
+</script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.31.3/js/jquery.tablesorter.min.js"></script>
+<script>
+    $(document).ready(function() {
+        const socket = io({ reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 1000, reconnectionDelayMax: 5000 });
+        
+        // === GLOBAL: Real account size ===
+        let accountSize = null;
+
+        // === R <-> $ CONVERSION ===
+        function getOneR() { return accountSize ? accountSize * 0.01 : 0; }
+
+        function rToDollar(ticker) {
+            const rEl = $(`#r-units-${ticker}`);
+            const riskEl = $(`#risk-${ticker}`);
+            if (!rEl.length || !riskEl.length) return;
+            const r = parseFloat(rEl.val()) || 0;
+            if (!r || !accountSize) { riskEl.val(''); return; }
+            riskEl.val(Math.round(r * getOneR()));
+            recalcRow(ticker);
+        }
+
+        function dollarToR(ticker) {
+            const riskEl = $(`#risk-${ticker}`);
+            const rEl = $(`#r-units-${ticker}`);
+            if (!riskEl.length || !rEl.length) return;
+            const dollars = parseFloat(riskEl.val()) || 0;
+            if (!dollars || !accountSize) { rEl.val(''); return; }
+            rEl.val((dollars / getOneR()).toFixed(2));
+            recalcRow(ticker);
+        }
+
+        function recalcRow(ticker) {
+            const lp = parseFloat($(`#last-price-${ticker}`).val()) || 0;
+            const sl = parseFloat($(`#sl-${ticker}`).val()) || 0;
+            calculateSharesAndSLPercent(ticker, lp, sl);
+            syncSubtableShares(ticker);
+        }
+
+        // === INPUT LISTENERS (Two-way sync) ===
+        $(document).on('input', '[id^="r-units-"]', function () {
+            const ticker = this.id.split('-')[2];
+            rToDollar(ticker);
+        });
+
+        $(document).on('input', '[id^="risk-"]', function () {
+            const ticker = this.id.split('-')[1];
+            dollarToR(ticker);
+        });
+
+        // === DEBOUNCE ===
+        function debounce(func, wait) {
+            let timeout;
+            return function (...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func(...args), wait);
+            };
+        }
+        // === SOCKET EVENTS ===
+        socket.on('disconnect', reason => $('#status').text('Disconnected – ' + reason).css('color', 'red'));
+        socket.on('connect', () => $('#status').text('Connected to server').css('color', 'green'));
+        socket.on('reconnect', () => {
+            $('#status').text('Connected to server').css('color', 'green');
+            loadPendingOrders(); loadTickers(); loadActiveTrades(); loadTradeSignals(); loadSellMarket(); loadStopMarket();
+            loadReplaceStop(); loadCanceledStop(); loadExecutedStop(); loadBuyMarket(); loadClosedTrades(); loadTradeSummary();
+        });
+        
+
+        socket.on('update_last_price', function(data) {
+            const ticker = (data.ticker || '').toUpperCase();
+            const lastPriceField = $(`#last-price-${ticker}`);
+            if (lastPriceField.length) {
+                lastPriceField.val(data.last_price.toFixed(2));
+                const stopLoss = parseFloat($(`#sl-${ticker}`).val());
+                calculateSharesAndSLPercent(ticker, data.last_price, stopLoss);
+                syncSubtableShares(ticker);
+            }
+        });
+
+        socket.on('update_order_data', function(data) {
+            const ticker = (data.ticker || '').toUpperCase();
+            const row = $(`#live-row-${ticker}`);
+            if (row.length) {
+                if (data.account !== undefined && data.account !== null) {
+                    accountSize = parseFloat(data.account);
+                    $('#live-trading-table tbody tr.main-row').each(function () {
+                        const t = $(this).find('.ticker-clickable').data('ticker');
+                        const rVal = $(`#r-units-${t}`).val();
+                        if (rVal) rToDollar(t); else dollarToR(t);
+                    });
+                }
+                $(`#last-price-${ticker}`).val(data.last_price ? data.last_price.toFixed(2) : '');
+                $(`#hod-${ticker}`).val(data.hod ? data.hod.toFixed(2) : '');
+                $(`#target-${ticker}`).val(data.target ? data.target.toFixed(2) : '');
+                $(`#sl-${ticker}`).val(data.stop_loss ? data.stop_loss.toFixed(2) : '');
+                calculateSharesAndSLPercent(ticker, data.last_price, data.stop_loss);
+                syncSubtableShares(ticker);
+            }
+        });
+
+        socket.on('trade_signal_update', function(data) {
+            const tbody = $('#trade-signal-table tbody');
+            const signals = Array.isArray(data) ? data : [data];
+            
+
+            signals.forEach(signal => {
+                if (!signal || !signal.tradeID) return;
+
+                const tradeID = signal.tradeID;
+                const existingRow = tbody.find(`tr[data-trade-id="${tradeID}"]`);
+                const oldStatus = existingRow.find('td:last-child strong').text().trim(); // current status in table
+                
+                const rowHTML = `
+                    <tr data-trade-id="${tradeID}">
+                        <td>${tradeID}</td>
+                        <td>${signal.time || ''}</td>
+                        <td>${signal.strategy || ''}</td>
+                        <td>${signal.ticker || ''}</td>
+                        <td>${signal.price ? parseFloat(signal.price).toFixed(2) : ''}</td>
+                        <td>${signal.shares || ''}</td>
+                        <td>${signal.target ? parseFloat(signal.target).toFixed(2) : ''}</td>
+                        <td>${signal.hi ? parseFloat(signal.hi).toFixed(2) : ''}</td>
+                        <td>${signal.risk ? parseFloat(signal.risk).toFixed(2) : ''}</td>
+                        <td><strong>${signal.status || ''}</strong></td>
+                    </tr>
+                `;
+
+                if (existingRow.length) {
+                    existingRow.replaceWith(rowHTML);
+                    console.log(`Updated Trade Signal ${tradeID} → ${signal.status}`);
+                    if (oldStatus && oldStatus !== signal.status) {
+                        speakAnnouncement(`Order ${signal.status}: ${signal.ticker}, ${signal.shares} shares`);
+                    }    
+                } else {
+                    tbody.append(rowHTML);
+                    console.log(`New Trade Signal ${tradeID} → ${signal.status}`);
+                    speakAnnouncement(`New signal: ${signal.ticker}, ${signal.strategy}, ${signal.shares} shares`);
+                }
+
+                
+                    
+                
+            });
+        });
+
+        socket.on('canceled_sell_update', function(order) {
+            console.log('canceled_sell_update RECEIVED →', order);  // ← THIS LINE
+
+            // Add / update row in CanceledStop table
+            const tbody = $('#canceledstop-table tbody');
+            const tradeID = order.tradeID || '';
+            const existingRow = tbody.find(`tr td:first-child:contains('${tradeID}')`).closest('tr');
+
+            const rowHTML = `
+                <tr data-trade-id="${tradeID}">
+                    <td>${tradeID}</td>
+                    <td>${order.strategy || ''}</td>
+                    <td>${order.time || ''}</td>
+                    <td>${order.ticker || ''}</td>
+                    <td>${order.shares || ''}</td>
+                    <td>${order.price ? parseFloat(order.price).toFixed(2) : ''}</td>
+                    <td>${order.action || 'S'}</td>
+                    <td>${order.status || 'Canceled'}</td>
+                    <td>${order.act_status || ''}</td>
+                    <td>${order.notes || ''}</td>
+                </tr>
+            `;
+
+            const existing = tbody.find(`tr[data-trade-id="${tradeID}"]`);
+            if (existing.length) {
+                existing.replaceWith(rowHTML);
+            } else {
+                tbody.append(rowHTML);
+            }
+
+            // Remove the canceled stop-sell from the Orders (sellmarket) table
+            const ordersTbody = $('#orders-table tbody');
+            const rowToRemove = ordersTbody.find(`tr td:first-child:contains('${tradeID}')`).closest('tr');
+                                
+
+            if (rowToRemove.length) {
+                rowToRemove.remove();
+                
+            }
+            // speakAnnouncement(`Order Canceled: ${order.ticker}, ${order.shares} shares`);
+        });
+
+        socket.on('sell_market_update', function(order) {
+            const tbody = $('#orders-table tbody');
+            const tradeID = order.tradeID || '';
+            const existingRow = tbody.find(`tr td:first-child:contains('${tradeID}')`).closest('tr');
+
+            const rowHTML = `
+                <tr>
+                    <td>${tradeID}</td>
+                    <td>${order.strategy || ''}</td>
+                    <td>${order.time || ''}</td>
+                    <td>${order.ticker || ''}</td>
+                    <td>${order.shares || ''}</td>
+                    <td>${order.price ? parseFloat(order.price).toFixed(2) : ''}</td>
+                    <td>${order.action || 'S'}</td>
+                    <td>${order.status || 'open'}</td>
+                    <td>${order.act_status || ''}</td>
+                    <td>${order.notes || ''}</td>
+                </tr>
+            `;
+
+            if (existingRow.length) {
+                existingRow.replaceWith(rowHTML);
+            } else {
+                tbody.append(rowHTML);
+            }
+        });
+
+        socket.on('stop_market_update', function(order) {
+            const tbody = $('#stoploss-table tbody');
+            const tradeID = order.tradeID || '';
+            const orderID = order.orderID || '';
+
+            let existingRow = null;
+
+            // Use orderID if present
+            if (orderID) {
+                existingRow = tbody.find(`tr[data-order-id="${orderID}"]`);
+            }
+            // Else use tradeID if present
+            else if (tradeID) {
+                existingRow = tbody.find(`tr[data-trade-id="${tradeID}"]`);
+            }
+
+            const rowHTML = `
+                <tr data-order-id="${orderID}" data-trade-id="${tradeID}">
+                    <td>${tradeID}</td>
+                    <td>${order.strategy || ''}</td>
+                    <td>${order.time || ''}</td>
+                    <td>${order.ticker || ''}</td>
+                    <td>
+                        <input type="number" class="form-control shares-input" value="${order.shares}" min="1" style="width: 90px;">
+                    </td>
+                    <td>
+                        <input type="number" step="0.01" class="form-control price-input"
+                               value="${order.price ? parseFloat(order.price).toFixed(2) : ''}">
+                    </td>
+                    <td>${order.action || 'STOPMKT'}</td>
+                    <td>${order.status || 'open'}</td>
+                    <td>${order.act_status || ''}</td>
+                    <td>${order.notes || ''}</td>
+                    <td>
+                        <button class="btn btn-primary btn-sm replace-btn"
+                                onclick="replaceOrder('${order.ticker}', '${orderID}', '${tradeID}', this)">
+                            Replace
+                        </button>
+                    </td>
+                </tr>
+            `;
+
+            if (existingRow && existingRow.length) {
+                existingRow.replaceWith(rowHTML);
+            } else {
+                tbody.append(rowHTML);
+            }
+        });
+
+        socket.on('buy_market_update', function(order) {
+            const tbody = $('#buymarket-table tbody');
+            const existingRow = tbody.find(`tr td:first-child:contains('${order.tradeID}')`);
+            if (existingRow.length) {
+                existingRow.parent().html(`
+                    <td>${order.tradeID}</td>
+                    <td>${order.strategy}</td>
+                    <td>${order.time}</td>
+                    <td>${order.ticker}</td>
+                    <td>${order.shares}</td>
+                    <td>${order.price}</td>
+                    <td>${order.action}</td>
+                    <td>${order.status}</td>
+                    <td>${order.act_status}</td>
+                    <td>${order.notes}</td>
+                `);
+            } else {
+                tbody.append(`
+                    <tr>
+                        <td>${order.tradeID}</td>
+                        <td>${order.strategy}</td>
+                        <td>${order.time}</td>
+                        <td>${order.ticker}</td>
+                        <td>${order.shares}</td>
+                        <td>${order.price}</td>
+                        <td>${order.action}</td>
+                        <td>${order.status}</td>
+                        <td>${order.act_status}</td>
+                        <td>${order.notes}</td>
+                    </tr>
+                `);
+            }
+        });
+
+        
+
+        socket.on('active_trade_update', function(data) {
+            let trade = data;
+            if (Array.isArray(data)) {
+                if (data.length === 0) return;
+                trade = data[0];
+            }
+            if (!trade || typeof trade !== 'object') return;
+            if (!trade.tradeID || trade.tradeID === 'undefined' || trade.tradeID.trim() === '') return;
+
+            // === CALCULATE PNL% UP FRONT (used in both cases) ===
+            const entryPrice = parseFloat(trade.entry_price) || 0;
+            const shares = parseFloat(trade.shares) || 0;
+            const unrealized = parseFloat(trade.unrealized) || 0;
+            const pnlPercent = (entryPrice && shares) 
+                ? ((unrealized / (entryPrice * shares)) * 100).toFixed(2) 
+                : 'N/A';
+
+            const tbody = $('#active-trades-table tbody');
+            const row = tbody.find(`tr td:first-child:contains('${trade.tradeID}')`);
+            if (row.length) {
+                row.find('td:eq(1)').text(trade.time || 'N/A');
+                row.find('td:eq(2)').text(trade.strategy || 'N/A');
+                row.find('td:eq(3)').text(trade.ticker || 'N/A');
+                row.find('td:eq(4)').text(trade.shares || 'N/A');
+                row.find('td:eq(5)').text(trade.entry_price !== null && !isNaN(trade.entry_price) ? parseFloat(trade.entry_price).toFixed(2) : 'N/A');
+                row.find('td:eq(6)').text(trade.last_price !== null && !isNaN(trade.last_price) ? parseFloat(trade.last_price).toFixed(2) : 'N/A');
+                row.find('td:eq(7)').html(`<input type="number" step="0.01" id="target-${trade.tradeID}" class="form-control target-input" value="${trade.target ? parseFloat(trade.target).toFixed(2) : ''}" placeholder="Enter target">`);
+                row.find('td:eq(8)').text(trade.risk !== null && !isNaN(trade.risk) ? parseFloat(trade.risk).toFixed(2) : '0.00'); // RISK
+                row.find('td:eq(9)').text(trade.stop_loss !== null && !isNaN(trade.stop_loss) ? parseFloat(trade.stop_loss).toFixed(2) : 'N/A');
+                row.find('td:eq(10)').text(trade.lu_price !== null && !isNaN(trade.lu_price) ? parseFloat(trade.lu_price).toFixed(2) : 'N/A');
+                row.find('td:eq(11)').text(trade.unrealized !== null && !isNaN(trade.unrealized) ? parseFloat(trade.unrealized).toFixed(2) : 'N/A');
+                row.find('td:eq(12)').text(trade.realized !== null && !isNaN(trade.realized) ? parseFloat(trade.realized).toFixed(2) : '0.00');  // NEW
+                row.find('td:eq(13)').text(pnlPercent !== 'N/A' ? `${pnlPercent}%` : 'N/A'); // PNL%
+                // === ADD THIS RIGHT BEFORE the trigger('update') ===
+                row.find('td:eq(14)').html(`
+                    <div class="actions-cell">
+                        <button class="btn btn-success btn-sm" onclick="closeTrade('${trade.ticker}', '${trade.tradeID}')">Close</button>
+                        <button class="btn btn-warning btn-sm" onclick="partialClose('${trade.tradeID}', '${trade.ticker}')">Close Half</button>
+                        <button class="btn btn-info btn-sm" onclick="updateTradeTarget('${trade.tradeID}', '${trade.ticker}')">Update Target</button>
+                    </div>
+                `);
+                $('#active-trades-table').trigger('update');
+            } else {
+                tbody.append(`
+                    <tr>
+                        <td>${trade.tradeID}</td>
+                        <td>${trade.time || 'N/A'}</td>
+                        <td>${trade.strategy || 'N/A'}</td>
+                        <td>${trade.ticker || 'N/A'}</td>
+                        <td>${trade.shares || 'N/A'}</td>
+                        <td>${trade.entry_price !== null && !isNaN(trade.entry_price) ? parseFloat(trade.entry_price).toFixed(2) : 'N/A'}</td>
+                        <td>${trade.last_price !== null && !isNaN(trade.last_price) ? parseFloat(trade.last_price).toFixed(2) : 'N/A'}</td>
+                        <td>
+                            <input type="number" step="0.01" id="target-${trade.tradeID}" 
+                            class="form-control target-input" 
+                            value="${trade.target ? parseFloat(trade.target).toFixed(2) : ''}" 
+                            placeholder="Enter target">
+                        </td>
+                        <td>${trade.risk !== null ? parseFloat(trade.risk).toFixed(2) : '0.00'}</td> <!-- NEW -->
+                        <td>${trade.stop_loss !== null && !isNaN(trade.stop_loss) ? parseFloat(trade.stop_loss).toFixed(2) : 'N/A'}</td>
+                        <td>${trade.lu_price !== null && !isNaN(trade.lu_price) ? parseFloat(trade.lu_price).toFixed(2) : 'N/A'}</td>
+                        <td>${trade.unrealized !== null && !isNaN(trade.unrealized) ? parseFloat(trade.unrealized).toFixed(2) : 'N/A'}</td>
+                        <td>${trade.realized !== null && !isNaN(trade.realized) ? parseFloat(trade.realized).toFixed(2) : '0.00'}</td>  <!-- NEW -->
+                        <td>${pnlPercent !== 'N/A' ? `${pnlPercent}%` : 'N/A'}</td>
+                        <td class="actions-cell">
+                            <button class="btn btn-success btn-sm" onclick="closeTrade('${trade.ticker}', '${trade.tradeID}')">Close</button>
+                            <button class="btn btn-warning btn-sm" onclick="partialClose('${trade.tradeID}', '${trade.ticker}')">Close Half</button>
+                            <button class="btn btn-info btn-sm" onclick="updateTradeTarget('${trade.tradeID}', '${trade.ticker}')">Update Target</button>
+                        </td>
+                    </tr>
+                `);
+                $('#active-trades-table').trigger('update');
+            }
+        });
+
+        socket.on('closed_trade_update', function(trade) {
+            const tbody = $('#closed-trades-table tbody');
+            const existingRow = tbody.find(`tr td:first-child:contains('${trade.tradeID}')`);
+            if (!existingRow.length) {
+                tbody.append(`
+                    <tr>
+                        <td>${trade.tradeID}</td>
+                        <td>${trade.strategy}</td>
+                        <td>${trade.ticker}</td>
+                        <td>${trade.shares}</td>
+                        <td>${trade.entry_price}</td>
+                        <td>${trade.entry_time}</td>
+                        <td>${trade.exit_price}</td>
+                        <td>${trade.exit_time}</td>
+                        <td>${trade.target ? trade.target.toFixed(2) : ''}</td>
+                        <td>${trade.risk}</td>
+                        <td>${trade.SLoss ? trade.SLoss.toFixed(2) : ''}</td>
+                        <td>${trade.RR ? trade.RR.toFixed(2) : ''}</td>
+                        <td>${trade.reason}</td>
+                        <td>${trade.realized.toFixed(2)}</td>
+                    </tr>
+                `);
+            }
+        });
+
+        socket.on('active_trade_remove', function(data) {
+            const tbody = $('#active-trades-table tbody');
+            const row = tbody.find(`tr td:first-child:contains('${data.tradeID}')`);
+            if (row.length) row.parent().remove();
+        });
+
+        socket.on('replace_stop_update', function(order) {
+            const tbody = $('#replacestop-table tbody');
+            const orderID = order.orderID || '';
+            const existingRow = tbody.find(`tr td:nth-child(7):contains('${tradeID}')`).closest('tr');
+
+            const rowHTML = `
+                <tr>
+                    <td>${order.tradeID || ''}</td>
+                    <td>${order.strategy || ''}</td>
+                    <td>${order.time || ''}</td>
+                    <td>${order.ticker || ''}</td>
+                    <td>${order.shares || ''}</td>
+                    <td>${order.price ? parseFloat(order.price).toFixed(2) : ''}</td>
+                    <td>${orderID}</td>
+                    <td>${order.action || ''}</td>
+                    <td>${order.status || ''}</td>
+                    <td>${order.act_status || ''}</td>
+                    <td>${order.notes || ''}</td>
+                </tr>
+            `;
+
+            if (existingRow.length) {
+                existingRow.replaceWith(rowHTML);
+            } else {
+                tbody.append(rowHTML);
+            }
+        });
+
+        socket.on('executed_stop_update', function(order) {
+            const tbody = $('#executedstop-table tbody');
+            const tradeID = order.tradeID || '';
+            const orderID = order.orderID || '';
+
+            let existingRow = null;
+
+            // Use orderID if present
+            if (orderID) {
+                existingRow = tbody.find(`tr[data-order-id="${orderID}"]`);
+            }
+            // Else use tradeID if present
+            else if (tradeID) {
+                existingRow = tbody.find(`tr[data-trade-id="${tradeID}"]`);
+            }
+
+            const rowHTML = `
+                <tr data-order-id="${orderID}" data-trade-id="${tradeID}">
+                    <td>${tradeID}</td>
+                    <td>${order.strategy || ''}</td>
+                    <td>${order.time || ''}</td>
+                    <td>${order.ticker || ''}</td>
+                    <td>${order.shares || ''}</td>
+                    <td>${order.price ? parseFloat(order.price).toFixed(2) : ''}</td>
+                </tr>
+            `;
+
+            if (existingRow && existingRow.length) {
+                existingRow.replaceWith(rowHTML);
+            } else {
+                tbody.append(rowHTML);
+            }
+            removeFromActiveStopTable(order.orderID, order.tradeID);
+        });
+
+        socket.on('canceled_stop_update', function(order) {
+            const tbody = $('#canceledstop-table tbody');
+            const tradeID = order.tradeID || '';
+            const orderID = order.orderID || '';
+
+            let existingRow = null;
+
+            // Use orderID if present
+            if (orderID) {
+                existingRow = tbody.find(`tr[data-order-id="${orderID}"]`);
+            }
+            // Else use tradeID if present
+            else if (tradeID) {
+                existingRow = tbody.find(`tr[data-trade-id="${tradeID}"]`);
+            }
+
+            const rowHTML = `
+                <tr data-order-id="${orderID}" data-trade-id="${tradeID}">
+                    <td>${tradeID}</td>
+                    <td>${order.strategy || ''}</td>
+                    <td>${order.time || ''}</td>
+                    <td>${order.ticker || ''}</td>
+                    <td>${order.shares || ''}</td>
+                    <td>${order.price ? parseFloat(order.price).toFixed(2) : ''}</td>
+                    <td>${order.status || 'Canceled'}</td>
+                    <td>${order.act_status || ''}</td>
+                </tr>
+            `;
+
+            if (existingRow && existingRow.length) {
+                existingRow.replaceWith(rowHTML);
+            } else {
+                tbody.append(rowHTML);
+            }
+            removeFromActiveStopTable(order.orderID, order.tradeID);
+        });
+
+        socket.on('update_canceled_stop', function(data) {
+            const tbody = $('#canceledstop-table tbody');
+            tbody.empty();
+            data.executed_stop.forEach(order => {
+                tbody.append(`
+                    <tr>
+                        <td>${order.tradeID}</td>
+                        <td>${order.strategy}</td>
+                        <td>${order.time}</td>
+                        <td>${order.ticker}</td>
+                        <td>${order.shares}</td>
+                        <td>${order.price}</td>
+                    </tr>
+                `);
+            });
+        });
+
+        socket.on('update_sell_market', function(data) {
+            const tbody = $('#orders-table tbody');
+            tbody.empty();
+            data.sell_market.forEach(order => {
+                tbody.append(`
+                    <tr>
+                        <td>${order.tradeID}</td>
+                        <td>${order.strategy}</td>
+                        <td>${order.time}</td>
+                        <td>${order.ticker}</td>
+                        <td>${order.shares}</td>
+                        <td>${order.price}</td>
+                        <td>${order.action}</td>
+                        <td>${order.status}</td>
+                        <td>${order.act_status}</td>
+                        <td>${order.notes}</td>
+                    </tr>
+                `);
+            });
+        });
+
+        socket.on('update_stop_market', function(data) {
+            const tbody = $('#stoploss-table tbody');
+            tbody.empty();
+            data.stop_market.forEach(order => {
+                tbody.append(`
+                    <tr data-trade-id="${order.tradeID}">
+                        <td>${order.tradeID}</td>
+                        <td>${order.strategy}</td>
+                        <td>${order.time}</td>
+                        <td>${order.ticker}</td>
+                        <td>${order.shares}</td>
+                        <td><input type="number" step="0.01" class="form-control price-input" value="${order.price ? parseFloat(order.price).toFixed(2) : ''}"></td>
+                        <td>${order.price}</td>
+                        <td>${order.action}</td>
+                        <td>${order.status}</td>
+                        <td>${order.act_status}</td>
+                        <td>${order.notes}</td>
+                        <td>
+                            <button class="btn btn-primary btn-sm replace-btn" onclick="replaceOrder('${order.ticker}', '${order.orderID}', '${order.tradeID}', this)">Replace</button>
+                        </td>
+                    </tr>
+                `);
+            });
+        });
+
+        socket.on('update_replace_stop', function(data) {
+            const tbody = $('#replacestop-table tbody');
+            tbody.empty();
+            data.replace_stop.forEach(order => {
+                tbody.append(`
+                    <tr>
+                        <td>${order.tradeID}</td>
+                        <td>${order.strategy}</td>
+                        <td>${order.time}</td>
+                        <td>${order.ticker}</td>
+                        <td>${order.shares}</td>
+                        <td>${order.price}</td>
+                        <td>${order.action}</td>
+                        <td>${order.status}</td>
+                        <td>${order.act_status}</td>
+                        <td>${order.notes}</td>
+                    </tr>
+                `);
+            });
+        });
+
+        socket.on('update_buy_market', function(data) {
+            const tbody = $('#buymarket-table tbody');
+            tbody.empty();
+            data.buy_market.forEach(order => {
+                tbody.append(`
+                    <tr>
+                        <td>${order.tradeID}</td>
+                        <td>${order.strategy}</td>
+                        <td>${order.time}</td>
+                        <td>${order.ticker}</td>
+                        <td>${order.shares}</td>
+                        <td>${order.price}</td>
+                        <td>${order.action}</td>
+                        <td>${order.status}</td>
+                        <td>${order.act_status}</td>
+                        <td>${order.notes}</td>
+                    </tr>
+                `);
+            });
+        });
+
+        socket.on('update_closed_trades', function(data) {
+            const tbody = $('#closed-trades-table tbody');
+            tbody.empty();
+            data.closed_trades.forEach(trade => {
+                const targetValue = trade.target ? parseFloat(trade.target).toFixed(2) : '';
+                tbody.append(`
+                    <tr>
+                        <td>${trade.tradeID}</td>
+                        <td>${trade.strategy}</td>
+                        <td>${trade.ticker}</td>
+                        <td>${trade.shares}</td>
+                        <td>${trade.entry_price}</td>
+                        <td>${trade.entry_time}</td>
+                        <td>${trade.exit_price}</td>
+                        <td>${trade.exit_time}</td>
+                        <td>${targetValue}</td>
+                        <td>${trade.SLoss ? trade.SLoss.toFixed(2) : ''}</td>
+                        <td>${trade.RR ? trade.RR.toFixed(2) : ''}</td>
+                        <td>${trade.reason}</td>
+                        <td>${trade.realized.toFixed(2)}</td>
+                    </tr>
+                `);
+            });
+        });
+
+        socket.on('update_trade_summary', function(data) {
+            $('#total-trades-market').text(data['market']['total_trades']);
+            $('#total-gain-market').text(data['market']['gain'].toFixed(2));
+            $('#total-loss-market').text(data['market']['loss'].toFixed(2));
+            $('#total-risk-market').text(data.market.total_risk.toFixed(2));
+            $('#total-gain-loss-market').text(data['market']['total_gain_loss'].toFixed(2));
+
+            $('#total-trades-limit').text(data['limit']['total_trades']);
+            $('#total-gain-limit').text(data['limit']['gain'].toFixed(2));
+            $('#total-loss-limit').text(data['limit']['loss'].toFixed(2));
+            $('#total-risk-limit').text(data.limit.total_risk.toFixed(2));
+            $('#total-gain-loss-limit').text(data['limit']['total_gain_loss'].toFixed(2));
+
+            $('#total-trades-target').text(data['target']['total_trades']);
+            $('#total-gain-target').text(data['target']['gain'].toFixed(2));
+            $('#total-loss-target').text(data['target']['loss'].toFixed(2));
+            $('#total-risk-target').text(data.target.total_risk.toFixed(2));
+            $('#total-gain-loss-target').text(data['target']['total_gain_loss'].toFixed(2));
+
+            $('#total-trades-stop').text(data['stop']['total_trades']);
+            $('#total-gain-stop').text(data['stop']['gain'].toFixed(2));
+            $('#total-loss-stop').text(data['stop']['loss'].toFixed(2));
+            $('#total-risk-stop').text(data.stop.total_risk.toFixed(2));
+            $('#total-gain-loss-stop').text(data['stop']['total_gain_loss'].toFixed(2));
+
+            $('#grand-total-trades').text(data['GrandTotal']['total_trades']);
+            $('#grand-total-gain').text(data['GrandTotal']['gain'].toFixed(2));
+            $('#grand-total-loss').text(data['GrandTotal']['loss'].toFixed(2));
+            $('#grand-total-risk').text(data.GrandTotal.total_risk.toFixed(2));
+            $('#grand-total-gain-loss').text(data['GrandTotal']['total_gain_loss'].toFixed(2));
+        });
+
+        // ====================== PENDING ORDERS ======================
+
+        function loadPendingOrders() {
+            $.get('/get_pending_orders', function(data) {
+                const tbody = $('#pending-orders-table tbody');
+                tbody.empty();
+                data.pending_orders.forEach(order => {
+                    appendPendingRow(order);
+                });
+            });
+        }
+
+        function appendPendingRow(order) {
+            const tbody = $('#pending-orders-table tbody');
+            tbody.append(`
+                <tr data-id="${order.id}">
+                    <td><input type="text" class="form-control" value="${order.ticker}" disabled></td>
+                    <td><input type="number" step="any" class="form-control risk-input" value="${order.risk ? order.risk.toFixed(2) : ''}"></td>
+                    <td><input type="number" step="0.01" class="form-control price-input" value="${order.price ? order.price.toFixed(2) : ''}"></td>
+                    <td><input type="number" class="form-control shares-input" value="${order.shares || ''}"></td>
+                    <td><input type="number" step="0.01" class="form-control target-input" value="${order.target ? order.target.toFixed(2) : ''}"></td>
+                    <td><input type="number" step="0.01" class="form-control sl-input" value="${order.stop_loss ? order.stop_loss.toFixed(2) : ''}"></td>
+                    <td><input type="number" step="0.01" class="form-control hod-input" value="${order.hod ? order.hod.toFixed(2) : ''}"></td>
+                    <td>
+                        <select class="form-control strategy-select">
+                            <option value="market" ${order.strategy === 'market' ? 'selected' : ''}>Market</option>
+                            <option value="limit" ${order.strategy === 'limit' ? 'selected' : ''}>Limit</option>
+                            <option value="target" ${order.strategy === 'target' ? 'selected' : ''}>Target</option>
+                            <option value="stop" ${order.strategy === 'stop' ? 'selected' : ''}>Stop</option>
+                        </select>
+                    </td>
+                    <td><input type="text" class="form-control time-input" value="${order.time || ''}" readonly></td>
+                    <td>
+                        <button class="btn btn-warning btn-sm update-pending-btn">Update</button>
+                        <button class="btn btn-success btn-sm send-pending-btn">Send</button>
+                        <button class="btn btn-danger btn-sm delete-pending-btn">Delete</button>
+                    </td>
+                </tr>
+            `);
+        }
+
+        // Load button in Live Trading → copy row to Pending
+        $(document).on('click', '.load-pending-btn', function() {
+            const ticker = $(this).data('ticker');
+
+            const data = {
+                ticker: ticker,
+                risk: parseFloat($(`#risk-${ticker}`).val()) || null,
+                price: parseFloat($(`#last-price-${ticker}`).val()) || null,
+                shares: parseInt($(`#shares-${ticker}`).val()) || null,
+                target: parseFloat($(`#target-${ticker}`).val()) || null,
+                stop_loss: parseFloat($(`#sl-${ticker}`).val()) || null,
+                hod: parseFloat($(`#hod-${ticker}`).val()) || null,
+                strategy: $(`#strategy-${ticker}`).val(),
+                time: $(`#time-${ticker}`).val() || new Date().toLocaleTimeString('en-US', {hour12: false})
+            };
+
+            $.ajax({
+                url: '/add_pending_order',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(data),
+                success: function(resp) {
+                    if (resp.status === 'success') {
+                        alert('Order loaded to Pending tab');
+                    }
+                }
+            });
+        });
+
+        // Update button in Pending → recalc risk & target (1:2 RR)
+        $(document).on('click', '.update-pending-btn', function() {
+            const row = $(this).closest('tr');
+            const price = parseFloat(row.find('.price-input').val());
+            const shares = parseInt(row.find('.shares-input').val());
+            const stopLoss = parseFloat(row.find('.sl-input').val());
+
+            if (isNaN(price) || isNaN(shares) || isNaN(stopLoss) || stopLoss <= price) {
+                alert('Invalid values or stop loss not above price');
+                return;
+            }
+
+            const riskDistance = stopLoss - price;
+            const risk = (shares * riskDistance).toFixed(2);
+            const target = (price - 2 * riskDistance).toFixed(2);
+
+            row.find('.risk-input').val(risk);
+            row.find('.target-input').val(target);
+
+            // Save back to server
+            const orderId = row.data('id');
+            const updated = {
+                id: orderId,
+                ticker: row.find('td:eq(0) input').val(),
+                risk: parseFloat(risk),
+                price: price,
+                shares: shares,
+                target: parseFloat(target),
+                stop_loss: stopLoss,
+                hod: parseFloat(row.find('.hod-input').val()) || null,
+                strategy: row.find('.strategy-select').val(),
+                time: row.find('.time-input').val()
+            };
+
+            $.ajax({
+                url: '/update_pending_order',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(updated)
+            });
+        });
+
+        // Send button in Pending → same as normal send
+        $(document).on('click', '.send-pending-btn', function() {
+            const row = $(this).closest('tr');
+            const order = {
+                ticker: row.find('td:eq(0) input').val(),
+                entry_price: parseFloat(row.find('.price-input').val()),
+                strategy: row.find('.strategy-select').val(),
+                time: row.find('.time-input').val(),
+                hod: parseFloat(row.find('.hod-input').val()),
+                shares: parseInt(row.find('.shares-input').val()),
+                risk: parseFloat(row.find('.risk-input').val()),
+                s_loss: parseFloat(row.find('.sl-input').val()),
+                target: parseFloat(row.find('.target-input').val())
+            };
+
+            $.ajax({
+                url: '/send_order',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(order),
+                success: function(resp) {
+                    if (resp.status === 'success') {
+                        alert('Pending order sent!');
+                        row.remove();
+                        $.post('/delete_pending_order', JSON.stringify({id: row.data('id')}));
+                    } else {
+                        alert('Failed: ' + resp.error);
+                    }
+                }
+            });
+        });
+
+        // Delete button
+        $(document).on('click', '.delete-pending-btn', function() {
+            if (!confirm('Delete this pending order?')) return;
+            const row = $(this).closest('tr');
+            const id = row.data('id');
+            $.ajax({
+                url: '/delete_pending_order',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({id: id}),
+                success: function() {
+                    row.remove();
+                }
+            });
+        });
+
+        // Socket updates for pending orders
+        socket.on('pending_order_added', order => appendPendingRow(order));
+        socket.on('pending_order_updated', order => {
+            const row = $(`#pending-orders-table tr[data-id="${order.id}"]`);
+            if (row.length) {
+                row.replaceWith($(appendPendingRow(order)).html());
+            }
+        });
+        socket.on('pending_order_deleted', data => $(`#pending-orders-table tr[data-id="${data.id}"]`).remove());
+
+        
+
+        function updateStatus() {
+            $.getJSON('/status', function(data) {
+                const statusElement = $('#status');
+                if (data.status === 'connected') {
+                    statusElement.text('Connected to DAS').css('color', 'green');
+                } else {
+                    statusElement.text('Disconnected from DAS').css('color', 'red');
+                }
+            });
+        }
+
+        function removeFromActiveStopTable(orderID, tradeID) {
+            const tbody = $('#stoploss-table tbody');
+            let row = null;
+
+            if (orderID) {
+                row = tbody.find(`tr[data-order-id="${orderID}"]`);
+            } else if (tradeID) {
+                row = tbody.find(`tr[data-trade-id="${tradeID}"]`);
+            }
+
+            if (row && row.length) {
+                row.remove();
+            }
+        }
+
+        function loadTickers() {
+            $.get('/get_tickers', function(data) {
+                const tickers = data.tickers;
+                const allTickersTableBody = $('#all-ticker-monitor-table tbody');
+                const liveTradingTableBody = $('#live-trading-table tbody');
+                allTickersTableBody.empty();
+                liveTradingTableBody.empty();
+
+                tickers.forEach(ticker => {
+                    const tickerUpper = ticker.ticker.toUpperCase();
+                    allTickersTableBody.append(`
+                        <tr>
+                            <td>${ticker.ticker}</td>
+                            <td>${ticker.date} ${ticker.time}</td>
+                            <td>${ticker.risk_1m || ''}</td>
+                            <td>${ticker.risk_5m || ''}</td>
+                            <td>${ticker.rsi_1m || ''}</td>
+                            <td>${ticker.rsi_5m || ''}</td>
+                            <td><button class="btn btn-danger cancel-ticker" data-ticker="${ticker.ticker}">Cancel</button></td>
+                        </tr>
+                    `);
+                });
+
+                tickers.forEach(ticker => {
+                    const tickerUpper = ticker.ticker.toUpperCase();
+                liveTradingTableBody.append(`
+                        <tr class="main-row" id="live-row-${tickerUpper}">
+                            <td style="vertical-align: middle;">
+                                <div class="ticker-clickable" data-ticker="${tickerUpper}" style="font-weight: bold; cursor: pointer; text-decoration: underline;">
+                                    ${ticker.ticker}
+                                </div>
+                                <div class="alert-controls mt-2 text-center">
+                                    <button class="btn btn-success btn-sm alert-toggle" data-ticker="${tickerUpper}">Alerts: ON</button>
+                                    <button class="btn btn-secondary btn-sm alert-reset" data-ticker="${tickerUpper}" title="Reset Alerts">↻</button>
+                                </div>
+                            </td>
+                            <td><input type="number" step="0.5" id="r-units-${tickerUpper}" class="form-control" style="width:90px;" value="1"></td>
+                            <td><input type="number" step="50" id="risk-${tickerUpper}" class="form-control" style="width:90px;" value=""></td>
+                            <td><input type="text" id="last-price-${tickerUpper}" class="form-control" style="width:90px;"></td>
+                            <td><input type="number" id="shares-${tickerUpper}" class="form-control" style="width:90px;"></td>
+                            <td><input type="number" step="0.01" id="target-${tickerUpper}" class="form-control"></td>
+                            <td><input type="number" id="sl-${tickerUpper}" class="form-control"></td>
+                            <td><input type="text" id="sl-percent-${tickerUpper}" class="form-control" readonly></td>
+                            <td><input type="number" id="hod-${tickerUpper}" class="form-control" readonly></td>
+                            <td>
+                                <select id="strategy-${tickerUpper}" class="form-control">
+                                    <option value="market">Market</option>
+                                    <option value="limit">Limit</option>
+                                    <option value="target" selected>Target</option>
+                                    <option value="stop">Stop</option>
+                                </select>
+                            </td>
+                            <td>
+                                <select id="sl-method-${tickerUpper}" class="form-control" style="width:120px;">
+                                    <option value="20%">20% above LP</option>
+                                    <option value="10%">10% above LP</option>
+                                    <option value="hod" selected>HOD</option>
+                                    <option value="last_hi">LastHi</option>
+                                    <option value="SL">SL</option>
+                                </select>
+                            </td>
+                            <td class="actions-cell">
+                                <button class="btn btn-warning btn-sm add-shares-btn" data-ticker="${tickerUpper}">Add</button>
+                                <button class="btn btn-info update-btn" onclick="updateRow('${tickerUpper}')">Update</button>
+                                <button class="btn btn-secondary btn-sm load-pending-btn" data-ticker="${tickerUpper}">Load</button>
+                                <button class="btn btn-success send-btn" onclick="sendOrder('${tickerUpper}')">Send</button>
+                            </td>
+                        
+                            <input type="hidden" id="time-${tickerUpper}" value="">
+                        </tr>
+                        <tr class="subtable-row" id="subtable-${tickerUpper}">
+                            <td colspan="14">
+                                <table class="table table-bordered located-shares-subtable" id="located-shares-${tickerUpper}">
+                                    <thead>
+                                        <tr>
+                                            <th>Ticker</th>
+                                            <th>Shares</th>
+                                            <th>Price/Sh</th>
+                                            <th>Total Price</th>
+                                            <th>Route</th>
+                                            <th>Notes</th>
+                                            <th>Borrowed</th>
+                                            <th>Available</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>${ticker.ticker}</td>
+                                            <td id="subtable-shares-${tickerUpper}"></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td class="borrowed"></td>
+                                            <td class="available"></td>
+                                            <td>
+                                                <button class="btn btn-primary locate-btn" data-ticker="${tickerUpper}">Locate</button>
+                                                <button class="btn btn-success accept-btn" data-ticker="${tickerUpper}" disabled>Accept</button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    `);
+
+                    // Default: assume active (will be corrected by socket or query)
+                    fetchBorrowedShares(tickerUpper);
+                    syncSubtableShares(tickerUpper);
+                    if (accountSize) rToDollar(tickerUpper);
+                });
+
+                function updateCurrentTime() {
+                    const now = new Date();
+                    $('#current-time').val(now.toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
+                    }).replace(/,/, ''));
+                }
+                updateCurrentTime();
+                setInterval(updateCurrentTime, 1000);
+            });
+        }
+
+        function calculateSharesAndSLPercent(ticker, lastPrice, stopLoss) {
+            const risk = parseFloat($(`#risk-${ticker}`).val());
+            lastPrice = parseFloat(lastPrice);
+            stopLoss = parseFloat(stopLoss);
+
+            if (lastPrice && stopLoss && !isNaN(risk) && stopLoss > lastPrice) {
+                const shares = Math.round(risk / (stopLoss - lastPrice));
+                $(`#shares-${ticker}`).val(shares);
+                const slPercent = Math.round(((stopLoss - lastPrice) / lastPrice) * 100);
+                $(`#sl-percent-${ticker}`).val(slPercent + '%');
+                const target = lastPrice - (2 * (stopLoss - lastPrice));
+                $(`#target-${ticker}`).val(target.toFixed(2));
+                syncSubtableShares(ticker);
+            } else {
+                $(`#shares-${ticker}`).val('');
+                $(`#sl-percent-${ticker}`).val('');
+                $(`#target-${ticker}`).val('');
+                syncSubtableShares(ticker);
+            }
+        }
+
+        function syncSubtableShares(ticker) {
+            const shares = $(`#shares-${ticker}`).val() || '';
+            $(`#subtable-shares-${ticker}`).text(shares);
+            const locateBtn = $(`#located-shares-${ticker} .locate-btn`);
+            locateBtn.data('shares', shares);
+            locateBtn.prop('disabled', !shares || shares <= 0);
+        }
+
+        window.updateRow = function(ticker, slMethod = null) {
+            const method = slMethod !== null ? slMethod : $(`#sl-method-${ticker}`).val();
+            const strategy = $(`#strategy-${ticker}`).val();        // ADD THIS LINE
+            const isStopStrategy = strategy === 'stop';  
+            
+            // If SL method is "SL", do NOT update stop loss
+            const isStaticSL = method === 'SL';
+
+            $.ajax({
+                url: '/get_order_data',
+                type: 'GET',
+                data: { ticker: ticker, sl_method: method },
+                success: function(data) {
+                    if (data.status === 'success') {
+                        // ONLY update Last Price if NOT in "stop" strategy
+                        if (!isStopStrategy && strategy !== 'limit') {                      // ADD THIS CHECK
+                            $(`#last-price-${ticker}`).val(data.last_price ? data.last_price.toFixed(2) : '');
+            }
+                        
+                        $(`#hod-${ticker}`).val(data.hod ? data.hod.toFixed(2) : '');
+                        $(`#time-${ticker}`).val(data.time);
+
+                        // Only update SL if NOT in SL mode
+                        if (!isStaticSL) {
+                            $(`#sl-${ticker}`).val(data.stop_loss ? data.stop_loss.toFixed(2) : '');
+                        }
+
+                        $(`#shares-${ticker}`).val('');
+                        $(`#target-${ticker}`).val(data.target ? data.target.toFixed(2) : '');
+                        
+                        if (data.account !== undefined && data.account !== null) accountSize = parseFloat(data.account);
+                        recalcRow(ticker);
+                    }
+                }
+            });
+        };
+
+        // Alert Toggle Button Click
+        $(document).on('click', '.alert-toggle', function() {
+            const ticker = $(this).data('ticker');
+            const btn = $(this);
+
+            $.ajax({
+                url: '/toggle_alerts',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ ticker: ticker }),
+                success: function(resp) {
+                    if (resp.status === 'success') {
+                        updateAlertButton(btn, resp.active);
+                    }
+                }
+            });
+        });
+
+        // Alert Reset Button Click
+        $(document).on('click', '.alert-reset', function() {
+            const ticker = $(this).data('ticker');
+            if (confirm(`Reset alerts for ${ticker}? This will clear streak and flags.`)) {
+                $.ajax({
+                    url: '/reset_alerts',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ ticker: ticker }),
+                    success: function(resp) {
+                        if (resp.status === 'success') {
+                            alert(`Alerts reset for ${ticker}`);
+                        }
+                    }
+                });
+            }
+        });
+
+        // Update button appearance
+        function updateAlertButton(btn, active) {
+            if (active) {
+                btn.removeClass('btn-danger').addClass('btn-success').text('Alerts: ON');
+            } else {
+                btn.removeClass('btn-success').addClass('btn-danger').text('Alerts: OFF');
+            }
+        }
+
+        // Socket: Update alert button state from server
+        socket.on('alert_state_update', function(data) {
+            const ticker = data.ticker.toUpperCase();
+            const btn = $(`.alert-toggle[data-ticker="${ticker}"]`);
+            if (btn.length) {
+                updateAlertButton(btn, data.active);
+            }
+        });
+
+        // On load, fetch current alert states
+        function loadAlertStates() {
+            $('#live-trading-table tbody tr.main-row').each(function() {
+                const ticker = $(this).find('.ticker-clickable').data('ticker');
+                $.get('/get_alert_state', { ticker: ticker }, function(resp) {
+                    if (resp.status === 'success') {
+                        const btn = $(`.alert-toggle[data-ticker="${ticker}"]`);
+                        updateAlertButton(btn, resp.active);
+                    }
+                });
+            });
+        }
+
+        // Call after loadTickers()
+        loadTickers();
+        loadAlertStates();  // Add this
+        $(document).on('input', '[id^="sl-"]', function() {
+            const ticker = this.id.split('-')[1];
+            const method = $(`#sl-method-${ticker}`).val();
+            if (method === 'SL') {
+                recalcRow(ticker);
+            }
+        });
+
+        $(document).on('change', '[id^="sl-method-"]', function() {
+            const ticker = this.id.split('-')[2];
+            const method = $(this).val();
+
+            if (method === 'SL') {
+                $(`#sl-${ticker}`).val('').prop('readonly', false);
+                $(`#shares-${ticker}`).val('');
+                $(`#sl-percent-${ticker}`).val('');
+                $(`#target-${ticker}`).val('');
+                syncSubtableShares(ticker);
+                recalcRow(ticker); // Recalc using blank or manual SL
+            } else {
+                $(`#sl-${ticker}`).prop('readonly', true);
+                updateRow(ticker, method);
+            }
+        });
+
+        $(document).on('click', '.add-shares-btn', function () {
+            const ticker = $(this).data('ticker');
+            const lastPrice = parseFloat($(`#last-price-${ticker}`).val()) || 0;
+            const stopLoss = parseFloat($(`#sl-${ticker}`).val()) || 0;
+            const riskDisplayed = parseFloat($(`#risk-${ticker}`).val()) || 0;
+
+            if (!lastPrice || !stopLoss || !riskDisplayed) {
+                alert('Missing last price, stop loss, or risk.');
+                return;
+            }
+            if (stopLoss <= lastPrice) {
+                alert('Stop loss must be above last price for short adds.');
+                return;
+            }
+
+            $.get('/get_active_trade_for_ticker', { ticker: ticker }, function (resp) {
+                if (!resp.active) {
+                    alert(`No active position for ${ticker}. Cannot add.`);
+                    $(`#shares-${ticker}`).val('');
+                    return;
+                }
+
+                const totalShares = resp.total_shares;
+                const avgEntry = resp.avg_entry_price;
+
+                const potentialLoss = totalShares * (stopLoss - lastPrice);
+                const remainingRisk = riskDisplayed - potentialLoss;
+
+                if (remainingRisk <= 0) {
+                    alert(`Not enough risk budget. Potential loss: $${potentialLoss.toFixed(2)} > Risk: $${riskDisplayed}`);
+                    $(`#shares-${ticker}`).val('');
+                    return;
+                }
+
+                const riskPerShare = stopLoss - lastPrice;
+                const addableShares = Math.floor(remainingRisk / riskPerShare);
+
+                $(`#shares-${ticker}`).val(addableShares);
+                syncSubtableShares(ticker);
+            }).fail(function () {
+                alert('Failed to fetch active trades.');
+            });
+        });
+
+        $(document).on('click', '.ticker-clickable', function() {
+            const ticker = $(this).data('ticker');
+            $(`#subtable-${ticker}`).toggle();
+            syncSubtableShares(ticker);
+        });
+
+        $(document).on('input', '[id^="shares-"]', function() {
+            const ticker = this.id.split('-')[1];
+            syncSubtableShares(ticker);
+        });
+
+        $(document).on('click', '.locate-btn', function() {
+            const ticker = $(this).data('ticker');
+            const shares = $(this).data('shares');
+            if (!shares || shares <= 0) {
+                alert('Please enter valid shares in the Live Trading table.');
+                return;
+            }
+            $.ajax({
+                url: 'http://localhost:5010/locate_shares',
+                type: 'POST',
+                data: { 'tickers[]': ticker, 'shares[]': shares },
+                success: function(data) {
+                    if (data.located_shares && data.located_shares[0]) {
+                        updateLocatedShares(ticker, data.located_shares[0]);
+                    } else {
+                        alert('No shares located.');
+                    }
+                },
+                error: function(jqXHR, textStatus) {
+                    alert('Error locating shares: ' + textStatus);
+                }
+            });
+        });
+
+        $(document).on('click', '.accept-btn', function() {
+            const ticker = $(this).data('ticker');
+            $.post('http://localhost:5010/accept_offer', { ticker: ticker }, function(data) {
+                if (data.status === 'success') {
+                    alert(`Accepted offer for ${ticker}`);
+                    fetchBorrowedShares(ticker);
+                } else {
+                    alert('Failed to accept offer: ' + data.message);
+                }
+            }).fail(() => alert(`Failed to accept offer for ${ticker}`));
+        });
+
+        function updateLocatedShares(ticker, share) {
+            const row = $(`#located-shares-${ticker} tbody tr`);
+            const shares = parseInt($(`#subtable-shares-${ticker}`).text()) || parseInt(share.shares) || 0;
+            const price = parseFloat(share.price) || 0;
+            const totalCost = (price * shares).toFixed(4);
+            row.find('td:eq(2)').text(price.toFixed(4));
+            row.find('td:eq(3)').text(totalCost);
+            row.find('td:eq(4)').text(share.route);
+            row.find('td:eq(5)').text(share.note || '');
+            row.find('.accept-btn').prop('disabled', !share.price && !share.note.includes('shortable'));
+        }
+
+        function fetchBorrowedShares(ticker) {
+            $.get('http://localhost:5010/get_borrowed_shares', function(data) {
+                const share = data.borrowed_shares.find(s => s.ticker === ticker) || { borrowed_shares: 0, available_shares: 0 };
+                const row = $(`#located-shares-${ticker} tbody tr`);
+                row.find('.borrowed').text(share.borrowed_shares);
+                row.find('.available').text(share.available_shares);
+            }).fail(() => {
+                $(`#located-shares-${ticker} .borrowed`).text('0');
+                $(`#located-shares-${ticker} .available`).text('0');
+            });
+        }
+
+        $(document).on('click', '.cancel-ticker', function() {
+            const ticker = $(this).data('ticker');
+            $.post('/remove_ticker', { ticker: ticker }, function(data) {
+                if (data.status === 'success') {
+                    loadTickers();
+                    socket.emit('ticker_removed', { ticker: ticker });
+                } else {
+                    alert('Failed to remove ticker');
+                }
+            });
+        });
+
+        window.partialClose = function(tradeID, ticker) {
+            if (!confirm(`Close half position for ${ticker} (Trade ${tradeID})?`)) return;
+
+            $.ajax({
+                url: '/partial_close',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    tradeID: tradeID,
+                    ticker: ticker,
+                    percent: 50
+                }),
+                success: function(resp) {
+                    if (resp.status === 'success') {
+                        alert('Partial close executed!');
+                        loadActiveTrades();
+                    } else {
+                        alert('Failed: ' + resp.error);
+                    }
+                },
+                error: function() {
+                    alert('Error sending partial close');
+                }
+            });
+        };
+
+        window.updateTradeTarget = function(tradeID, ticker) {
+            const targetInput = $(`#target-${tradeID}`).val();
+            const target = targetInput ? parseFloat(targetInput) : null;
+            if (target === null || isNaN(target) || target <= 0) {
+                alert('Please enter a valid target price.');
+                return;
+            }
+            $.ajax({
+                url: '/update_trade_target',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ tradeID: tradeID, ticker: ticker, target: target }),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        alert(`Target price for trade ${tradeID} updated to ${target}`);
+                        loadActiveTrades();
+                    } else {
+                        alert('Failed to update target price: ' + response.error);
+                    }
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    alert('Error updating target price: ' + (jqXHR.responseJSON?.error || textStatus));
+                }
+            });
+        };
+
+        window.replaceOrder = function(ticker, orderID, tradeID, button) {
+            const row = $(button).closest('tr');
+            const shares = parseInt(row.find('.shares-input').val());
+            const price = parseFloat(row.find('.price-input').val());
+
+            if (!ticker || !orderID || !tradeID) {
+                alert('Missing ticker, order ID, or trade ID.');
+                return;
+            }
+            if (isNaN(price) || price <= 0) {
+                alert('Please enter a valid price greater than 0.');
+                return;
+            }
+            if (isNaN(shares) || shares <= 0) {
+                alert('Invalid shares value.');
+                return;
+            }
+
+            const replaceData = {
+                ticker: ticker,
+                shares: shares,
+                price: price,
+                order_id: orderID,
+                trade_id: tradeID
+            };
+
+            $.ajax({
+                url: '/replace_order',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(replaceData),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        alert('Replace order sent successfully!');
+                        loadStopMarket();
+                    } else {
+                        alert('Failed to send replace order: ' + response.error);
+                    }
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    alert('Error sending replace order: ' + (jqXHR.responseJSON?.error || textStatus));
+                }
+            });
+        };
+
+        window.sendOrder = function(ticker) {
+            const entry_price = $(`#last-price-${ticker}`).val();
+            const strategy = $(`#strategy-${ticker}`).val();
+            const hod = $(`#hod-${ticker}`).val();
+            const time = $(`#time-${ticker}`).val();
+            const shares = parseInt($(`#shares-${ticker}`).val());
+            const s_loss = parseFloat($(`#sl-${ticker}`).val());
+            const target = parseFloat($(`#target-${ticker}`).val());
+            const risk = parseFloat($(`#risk-${ticker}`).val());
+
+            if (isNaN(risk) || risk <= 0) {
+                alert('Please enter a valid Risk value greater than 0.');
+                return;
+            }
+            if (isNaN(shares) || shares <= 0) {
+                alert('Please ensure Shares is a valid positive number.');
+                return;
+            }
+            if (isNaN(s_loss) || s_loss <= 0) {
+                alert('Please enter a valid Stop Loss value greater than 0.');
+                return;
+            }
+            if (!entry_price || isNaN(parseFloat(entry_price))) {
+                alert('Last Price is invalid or missing.');
+                return;
+            }
+            if (!strategy) {
+                alert('Please select a Strategy.');
+                return;
+            }
+            if (!hod || isNaN(parseFloat(hod))) {
+                alert('Please ensure HOD is a valid number.');
+                return;
+            }
+            if (!time) {
+                alert('Date Time is missing.');
+                return;
+            }
+            if (isNaN(target)) {
+                alert('Please enter a valid Target value.');
+                return;
+            }
+
+            const orderData = {
+                ticker: ticker,
+                entry_price: parseFloat(entry_price),
+                strategy: strategy,
+                time: time,
+                hod: parseFloat(hod),
+                shares: shares,
+                risk: risk,
+                s_loss: s_loss,
+                target: target
+            };
+
+            $.ajax({
+                url: '/send_order',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(orderData),
+                success: function(response) {
+                    if (response.status === 'success') {
+                        confirmOrder(ticker); 
+                        // alert('Order sent successfully!');
+                    } else {
+                        alert('Failed to send order: ' + response.error);
+                    }
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    alert('Error sending order: ' + (jqXHR.responseJSON?.error || textStatus));
+                }
+            });
+        };
+
+        // Prevent auto-update from touching Last Price and SL in Limit/Stop
+        const originalUpdateRow = window.updateRow;
+        window.updateRow = function(ticker, slMethod = null) {
+            const strategy = $(`#strategy-${ticker}`).val();
+            if (strategy === 'limit' || strategy === 'stop') {
+                // Do NOT updateRow() → only update HOD, time, account size
+                // But skip writing to last-price and sl fields
+                $.ajax({
+                    url: '/get_order_data',
+                    type: 'GET',
+                    data: { ticker: ticker, sl_method: slMethod || $(`#sl-method-${ticker}`).val() },
+                    success: function(data) {
+                        if (data.status === 'success') {
+                            $(`#hod-${ticker}`).val(data.hod ? data.hod.toFixed(2) : '');
+                            $(`#time-${ticker}`).val(data.time);
+                            if (data.account !== undefined && data.account !== null) {
+                                accountSize = parseFloat(data.account);
+                            }
+                            // DO NOT touch last-price or sl here
+                            recalcRow(ticker);
+                        }
+                    }
+                });
+            } else {
+                originalUpdateRow(ticker, slMethod);
+            }
+        };
+
+        function loadTradeSignals() {
+            $.get('/get_trade_signals', function(data) {
+                const tbody = $('#trade-signal-table tbody');
+                tbody.empty();
+                data.trade_signals.forEach(signal => {
+                    tbody.append(`
+                        <tr>
+                            <td>${signal.tradeID}</td>
+                            <td>${signal.time}</td>
+                            <td>${signal.strategy}</td>
+                            <td>${signal.ticker}</td>
+                            <td>${signal.price}</td>
+                            <td>${signal.shares}</td>
+                            <td>${signal.target ? signal.target.toFixed(2) : ''}</td>
+                            <td>${signal.hi}</td>
+                            <td>${signal.risk}</td>
+                            <td>${signal.status}</td>
+                        </tr>
+                    `);
+                });
+            });
+        }
+
+        function speakAnnouncement(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function loadSellMarket() {
+            $.get('/get_sell_market', function(data) {
+                const tbody = $('#orders-table tbody');
+                tbody.empty();
+                data.sell_market.forEach(order => {
+                    tbody.append(`
+                        <tr>
+                            <td>${order.tradeID}</td>
+                            <td>${order.strategy}</td>
+                            <td>${order.time}</td>
+                            <td>${order.ticker}</td>
+                            <td>${order.shares}</td>
+                            <td>${order.price}</td>
+                            <td>${order.action}</td>
+                            <td>${order.status}</td>
+                            <td>${order.act_status}</td>
+                            <td>${order.notes}</td>
+                        </tr>
+                    `);
+                });
+            });
+        }
+
+        function loadStopMarket() {
+            $.get('/get_stop_market', function(data) {
+                const tbody = $('#stoploss-table tbody');
+                tbody.empty();
+                data.stop_market.forEach(order => {
+                    tbody.append(`
+                        <tr data-order-id="${order.orderID}" data-trade-id="${order.tradeID}">
+                            <td>${order.tradeID}</td>
+                            <td>${order.strategy}</td>
+                            <td>${order.time}</td>
+                            <td>${order.ticker}</td>
+                            <td>
+                                <input type="number" class="form-control shares-input" value="${order.shares}" min="1" style="width: 90px;">
+                            </td>
+                            <td><input type="number" step="0.01" class="form-control price-input" value="${order.price ? parseFloat(order.price).toFixed(2) : ''}"></td>
+                            <td>${order.action}</td>
+                            <td>${order.status}</td>
+                            <td>${order.act_status}</td>
+                            <td>${order.notes}</td>
+                            <td>
+                                <button class="btn btn-primary btn-sm replace-btn" onclick="replaceOrder('${order.ticker}', '${order.orderID}', '${order.tradeID}', this)">Replace</button>
+                            </td>
+                        </tr>
+                    `);
+                });
+            });
+        }
+
+        function loadReplaceStop() {
+            $.get('/get_replace_stop', function(data) {
+                const tbody = $('#replacestop-table tbody');
+                tbody.empty();
+                data.replace_stop.forEach(order => {
+                    tbody.append(`
+                        <tr>
+                            <td>${order.tradeID}</td>
+                            <td>${order.strategy}</td>
+                            <td>${order.time}</td>
+                            <td>${order.ticker}</td>
+                            <td>${order.shares}</td>
+                            <td>${order.price}</td>
+                            <td>${order.action}</td>
+                            <td>${order.status}</td>
+                            <td>${order.act_status}</td>
+                            <td>${order.notes}</td>
+                        </tr>
+                    `);
+                });
+            });
+        }
+
+        function loadCanceledStop() {
+            $.get('/get_canceled_stop', function(data) {
+                const tbody = $('#canceledstop-table tbody');
+                tbody.empty();
+                data.canceled_stop.forEach(order => {
+                    tbody.append(`
+                        <tr>
+                            <td>${order.tradeID}</td>
+                            <td>${order.strategy}</td>
+                            <td>${order.time}</td>
+                            <td>${order.ticker}</td>
+                            <td>${order.shares}</td>
+                            <td>${order.price}</td>
+                            <td>${order.action}</td>
+                            <td>${order.status}</td>
+                            <td>${order.act_status}</td>
+                            <td>${order.notes}</td>
+                        </tr>
+                    `);
+                });
+            });
+        }
+
+        function loadExecutedStop() {
+            $.get('/get_executed_stop', function(data) {
+                const tbody = $('#executedstop-table tbody');
+                tbody.empty();
+                data.executed_stop.forEach(order => {
+                    tbody.append(`
+                        <tr>
+                            <td>${order.tradeID}</td>
+                            <td>${order.strategy}</td>
+                            <td>${order.time}</td>
+                            <td>${order.ticker}</td>
+                            <td>${order.shares}</td>
+                            <td>${order.price}</td>
+                        </tr>
+                    `);
+                });
+            });
+        }
+
+        function loadBuyMarket() {
+            $.get('/get_buy_market', function(data) {
+                const tbody = $('#buymarket-table tbody');
+                tbody.empty();
+                data.buy_market.forEach(order => {
+                    tbody.append(`
+                        <tr>
+                            <td>${order.tradeID}</td>
+                            <td>${order.strategy}</td>
+                            <td>${order.time}</td>
+                            <td>${order.ticker}</td>
+                            <td>${order.shares}</td>
+                            <td>${order.price}</td>
+                            <td>${order.action}</td>
+                            <td>${order.status}</td>
+                            <td>${order.act_status}</td>
+                            <td>${order.notes}</td>
+                        </tr>
+                    `);
+                });
+            });
+        }
+
+        function loadActiveTrades() {
+            $.get('/get_active_trades', function(data) {
+                const tbody = $('#active-trades-table tbody');
+                tbody.empty();
+                data.active_trades.forEach(trade => {
+                    const tickerUpper = trade.ticker.toUpperCase();
+                    const entryPrice = parseFloat(trade.entry_price);
+                    const shares = parseFloat(trade.shares) || 0;  // ← ADD THIS LINE
+                    const lastPrice = parseFloat(trade.last_price);
+                    const unrealized   = parseFloat(trade.unrealized) || 0;
+                    const realized     = parseFloat(trade.realized || 0) || 0;  // ← THIS WAS MISSING
+                    const total_pnl = realized + unrealized;
+
+                    // Safely calculate PNL%
+                    let pnlPercentDisplay = 'N/A';
+                    if (shares > 0 && entryPrice > 0) {
+                        const pnlPercent = (total_pnl / (entryPrice * shares)) * 100;
+                        if (!isNaN(pnlPercent) && isFinite(pnlPercent)) {
+                            pnlPercentDisplay = pnlPercent.toFixed(2) + '%';
+                        }
+                    }
+                    
+                    tbody.append(`
+                        <tr>
+                            <td>${trade.tradeID}</td>
+                            <td>${trade.time}</td>
+                            <td>${trade.strategy}</td>
+                            <td>${trade.ticker}</td>
+                            <td>${trade.shares}</td>
+                            <td>${trade.entry_price}</td>
+                            <td>${trade.last_price}</td>
+                            <td><input type="number" step="0.01" id="target-${trade.tradeID}" class="form-control target-input" value="${trade.target ? parseFloat(trade.target).toFixed(2) : ''}" placeholder="Enter target"></td>
+                            <td>${trade.risk !== null ? parseFloat(trade.risk).toFixed(2) : '0.00'}</td>
+                            <td>${trade.stop_loss}</td>
+                            <td>${trade.lu_price}</td>
+                            <td>${parseFloat(trade.unrealized).toFixed(2)}</td>
+                            <td>${parseFloat(trade.realized || 0).toFixed(2)}</td>  <!-- NEW -->
+                            <td>${pnlPercentDisplay}</td>
+                            <td class="actions-cell">
+                                <button class="btn btn-success btn-sm" onclick="closeTrade('${trade.ticker}', '${trade.tradeID}')">Close</button>
+                                <button class="btn btn-warning btn-sm" onclick="partialClose('${trade.tradeID}', '${trade.ticker}')">Close Half</button>
+                                <button class="btn btn-info btn-sm" onclick="updateTradeTarget('${trade.tradeID}', '${tickerUpper}')">Update Target</button>
+                            </td>
+                        </tr>
+                    `);
+                });
+                $('#active-trades-table').trigger('update');
+            }).fail(function(jqXHR, textStatus, errorThrown) {
+                alert('Error loading active trades: ' + textStatus);
+            });
+        }
+
+        function loadClosedTrades() {
+            $.get('/get_closed_trades', function(data) {
+                const tbody = $('#closed-trades-table tbody');
+                tbody.empty();
+                data.closed_trades.forEach(trade => {
+                    const targetValue = trade.target ? parseFloat(trade.target).toFixed(2) : '';
+                    const riskValue = trade.risk ? parseFloat(trade.risk).toFixed(2) : '';
+                    const slossValue = trade.SLoss ? parseFloat(trade.SLoss).toFixed(2) : '';
+                    const rrValue = trade.RR ? parseFloat(trade.RR).toFixed(2) : '';
+                    tbody.append(`
+                        <tr>
+                            <td>${trade.tradeID}</td>
+                            <td>${trade.strategy}</td>
+                            <td>${trade.ticker}</td>
+                            <td>${trade.shares}</td>
+                            <td>${trade.entry_price}</td>
+                            <td>${trade.entry_time}</td>
+                            <td>${trade.exit_price}</td>
+                            <td>${trade.exit_time}</td>
+                            <td>${targetValue}</td>
+                            <td>${riskValue}</td> 
+                            <td>${trade.SLoss ? trade.SLoss.toFixed(2) : ''}</td>
+                            <td>${trade.RR ? trade.RR.toFixed(2) : ''}</td>
+                            <td>${trade.reason}</td>
+                            <td>${parseFloat(trade.realized).toFixed(2)}</td>
+                        </tr>
+                    `);
+                });
+            });
+        }
+
+        function loadTradeSummary() {
+            $.get('/get_trade_summary', function(data) {
+                $('#total-trades-market').text(data['market']['total_trades']);
+                $('#total-gain-market').text(data['market']['gain'].toFixed(2));
+                $('#total-loss-market').text(data['market']['loss'].toFixed(2));
+                $('#total-risk-market').text(data['market']['total_risk'].toFixed(2));
+                $('#total-gain-loss-market').text(data['market']['total_gain_loss'].toFixed(2));
+
+                $('#total-trades-limit').text(data['limit']['total_trades']);
+                $('#total-gain-limit').text(data['limit']['gain'].toFixed(2));
+                $('#total-loss-limit').text(data['limit']['loss'].toFixed(2));
+                $('#total-risk-limit').text(data['limit']['total_risk'].toFixed(2));
+                $('#total-gain-loss-limit').text(data['limit']['total_gain_loss'].toFixed(2));
+
+                $('#total-trades-target').text(data['target']['total_trades']);
+                $('#total-gain-target').text(data['target']['gain'].toFixed(2));
+                $('#total-loss-target').text(data['target']['loss'].toFixed(2));
+                $('#total-risk-target').text(data['target']['total_risk'].toFixed(2));
+                $('#total-gain-loss-target').text(data['target']['total_gain_loss'].toFixed(2));
+
+                $('#total-trades-stop').text(data['stop']['total_trades']);
+                $('#total-gain-stop').text(data['stop']['gain'].toFixed(2));
+                $('#total-loss-stop').text(data['stop']['loss'].toFixed(2));
+                $('#total-risk-stop').text(data['stop']['total_risk'].toFixed(2));
+                $('#total-gain-loss-stop').text(data['stop']['total_gain_loss'].toFixed(2));
+
+                $('#grand-total-trades').text(data['GrandTotal']['total_trades']);
+                $('#grand-total-gain').text(data['GrandTotal']['gain'].toFixed(2));
+                $('#grand-total-loss').text(data['GrandTotal']['loss'].toFixed(2));
+                $('#grand-total-risk').text(data['GrandTotal']['total_risk'].toFixed(2));
+                $('#grand-total-gain-loss').text(data['GrandTotal']['total_gain_loss'].toFixed(2));
+            });
+        }
+
+        $('#connect-button').click(function() {
+            $.post('/connect', function(data) {
+                if (data.status === 'success') {
+                    updateStatus();
+                } else {
+                    alert('Failed to connect to DAS API');
+                }
+            });
+        });
+
+        $('#disconnect-button').click(function() {
+            $.post('/disconnect', function(data) {
+                if (data.status === 'success') {
+                    updateStatus();
+                } else {
+                    alert('Failed to disconnect from DAS API');
+                }
+            });
+        });
+
+        $('#add-row').click(function() {
+            $('#tickers-container').append(`
+                <div class="form-row mb-3">
+                    <div class="col"><input type="text" class="form-control" name="tickers[]" placeholder="Ticker"></div>
+                    <div class="col"><input type="number" step="0.01" class="form-control" name="risk_1m[]" placeholder="1 Min Risk (%)" value="0.5"></div>
+                    <div class="col"><input type="number" step="0.01" class="form-control" name="risk_5m[]" placeholder="5 Min Risk (%)" value="1"></div>
+                    <div class="col"><input type="number" step="0.01" class="form-control" name="rsi_1m[]" placeholder="1 Min RSI" value="1"></div>
+                    <div class="col"><input type="number" class="form-control" name="rsi_5m[]" placeholder="5 Min RSI" value="50" readonly></div>
+                    <div class="col"><button type="button" class="btn btn-danger remove-row">X</button></div>
+                </div>
+            `);
+        });
+
+        $(document).on('click', '.remove-row', function() {
+            $(this).closest('.form-row').remove();
+        });
+
+        $('#trading-form').submit(function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            $('#start-trading').prop('disabled', true).text('Adding Ticker...');
+            $('#loading-spinner').show();
+
+            $.ajax({
+                url: '/add_ticker',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(data) {
+                    if (data.status === 'success') {
+                        loadTickers();
+                        $('#trading-form')[0].reset();
+                        socket.emit('ticker_added', { tickers: formData.getAll('tickers[]') });
+                    } else {
+                        alert('Error adding ticker: ' + data.error);
+                    }
+                },
+                error: function(jqXHR, textStatus) {
+                    alert('Error sending add ticker request: ' + textStatus);
+                },
+                complete: function() {
+                    $('#start-trading').prop('disabled', false).text('Start Trading');
+                    $('#loading-spinner').hide();
+                }
+            });
+        });
+
+        window.closeTrade = function(ticker, tradeID) {
+            $.ajax({
+                url: '/close_trade',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ ticker: ticker, tradeID: tradeID, reason: 'TakeProfit' }),
+                success: function(data) {
+                    if (data.status === 'success') {
+                        loadActiveTrades();
+                    } else {
+                        alert('Failed to close trade: ' + data.error);
+                    }
+                },
+                error: function(jqXHR, textStatus) {
+                    alert('Error: ' + textStatus);
+                }
+            });
+        };
+
+        // SL METHOD CHANGE — FINAL VERSION (HOD & LastHi FIXED)
+        $(document).on('change', '[id^="sl-method-"]', function () {
+            const ticker   = this.id.split('-')[2];
+            const method   = $(this).val();
+            const strategy = $(`#strategy-${ticker}`).val();
+
+            // Only for Limit/Stop we calculate locally
+            if (strategy !== 'limit' && strategy !== 'stop') {
+                updateRow(ticker, method);
+                return;
+            }
+
+            const lastPrice = parseFloat($(`#last-price-${ticker}`).val()) || 0;
+            if (!lastPrice) return;
+
+            let stopLoss = 0;
+
+            if (method === '20%') {
+                stopLoss = lastPrice * 1.20;
+            }
+            else if (method === '10%') {
+                stopLoss = lastPrice * 1.10;
+            }
+            else if (method === 'hod') {
+                const hod = parseFloat($(`#hod-${ticker}`).val()) || 0;
+                stopLoss = hod > lastPrice ? hod : lastPrice * 1.20; // safety fallback
+            }
+            else if (method === 'last_hi') {
+                // We need real LastHi from server — one quick call, only when needed
+                $.get('/get_order_data', { ticker: ticker, sl_method: 'last_hi' }, function(data) {
+                    if (data.status === 'success' && data.stop_loss) {
+                        $(`#sl-${ticker}`).val(parseFloat(data.stop_loss).toFixed(2));
+                        calculateSharesAndSLPercent(ticker, lastPrice, data.stop_loss);
+                        syncSubtableShares(ticker);
+                    }
+                });
+                return; // exit early — we wait for server response
+            }
+            else if (method === 'SL') {
+                $(`#sl-${ticker}`).prop('readonly', false);
+                recalcRow(ticker);
+                return;
+            }
+
+            // Apply calculated stop loss
+            $(`#sl-${ticker}`)
+                .val(stopLoss.toFixed(2))
+                .prop('readonly', true);
+
+            calculateSharesAndSLPercent(ticker, lastPrice, stopLoss);
+            syncSubtableShares(ticker);
+        });
+
+      
+
+        $(document).on('change', '[id^="strategy-"]', function() {
+            const ticker = this.id.split('-')[1];
+            const strategy = $(this).val();
+            const $lastPrice = $(`#last-price-${ticker}`);
+            if (strategy === 'stop' || strategy === 'limit') {
+                $lastPrice.prop('readonly', false).css('background-color', '#fff');
+            } else {
+                $lastPrice.prop('readonly', true).css('background-color', '#f8f9fa');
+                updateRow(ticker);
+            }
+        });
+
+        $(document).on('input', '[id^="last-price-"]', function () {
+            const ticker   = this.id.split('-')[2];
+            const strategy = $(`#strategy-${ticker}`).val();
+            const method   = $(`#sl-method-${ticker}`).val();
+
+            if (strategy !== 'limit' && strategy !== 'stop') return;
+
+            const lastPrice = parseFloat($(this).val()) || 0;
+            if (!lastPrice) return;
+
+            if (method === 'SL') {
+                const stopLoss = parseFloat($(`#sl-${ticker}`).val()) || 0;
+                if (stopLoss) {
+                    calculateSharesAndSLPercent(ticker, lastPrice, stopLoss);
+                    syncSubtableShares(ticker);
+                }
+                return;
+            }
+
+            let stopLoss = lastPrice * 1.20;
+
+            if (method === '20%')          stopLoss = lastPrice * 1.20;
+            else if (method === '10%')     stopLoss = lastPrice * 1.10;
+            else if (method === 'hod') {
+                const hod = parseFloat($(`#hod-${ticker}`).val()) || 0;
+                stopLoss = hod > lastPrice ? hod : lastPrice * 1.20;
+            }
+            // last_hi handled only on dropdown change (server call)
+
+            $(`#sl-${ticker}`).val(stopLoss.toFixed(2));
+            calculateSharesAndSLPercent(ticker, lastPrice, stopLoss);
+            syncSubtableShares(ticker);
+        });
+
+        // === HELPER: Get currently focused row ===
+        function getFocusedRow() {
+            const $el = $(document.activeElement);
+            const $row = $el.closest('tr.main-row');
+            return $row.length ? $row : null;
+        }
+
+        // === AUTO-HIGHLIGHT FOCUSED ROW ===
+        $(document).on('focusin', '#live-trading-table input, #live-trading-table select', function() {
+            $('#live-trading-table tr.main-row').removeClass('focused');
+            $(this).closest('tr.main-row').addClass('focused');
+        });
+
+        // Optional: Remove highlight on blur
+        $(document).on('focusout', '#live-trading-table input, #live-trading-table select', function() {
+            setTimeout(() => {
+                if (!$('#live-trading-table input:focus, #live-trading-table select:focus').length) {
+                    $('#live-trading-table tr.main-row').removeClass('focused');
+                }
+            }, 100);
+        });
+
+        // === 2× ENTER TO SEND ORDER (Safe) ===
+        let pendingSend = null;
+
+        $(document).on('keydown', '[id^="shares-"]', function(e) {
+            if (!hotkeysEnabled) return;
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+
+            const ticker = this.id.split('-')[1];
+            const $input = $(this);
+
+            if (pendingSend === ticker) {
+                // SECOND ENTER → SEND
+                sendOrder(ticker);
+                pendingSend = null;
+                $input.css('background', '');
+            } else {
+                // FIRST ENTER → CONFIRM
+                pendingSend = ticker;
+                $input.css('background', '#fff3cd')
+                      .attr('placeholder', 'Press Enter again to SEND')
+                      .val($input.val()); // Keep value
+            }
+        });
+
+        // === ORDER CONFIRMATION: Sound + Flash (Zero Delay) ===
+        function confirmOrder(ticker) {
+            // Tiny beep sound (data URI - no external file)
+            const beep = new Audio('data:audio/wav;base64,UklGRhoAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+            beep.volume = 0.3;
+            beep.play();
+
+            // Flash row green
+            const $row = $(`#live-row-${ticker}`);
+            $row.stop().css('background-color', '#c8e6c9')
+                .animate({ backgroundColor: '#ffffff' }, 800);
+        }
+
+        // Clear pending on escape or blur
+        $(document).on('keydown', function(e) {
+            if (!hotkeysEnabled) return;
+            if (e.key === 'Escape' && pendingSend) {
+                $(`#shares-${pendingSend}`).css('background', '');
+                pendingSend = null;
+            }
+        });
+
+        // === HOTKEY TOGGLE ===
+        let hotkeysEnabled = true;
+
+        $('#hotkeyToggle').on('change', function() {
+            hotkeysEnabled = this.checked;
+            const label = $(this).next('label');
+            if (hotkeysEnabled) {
+                label.html('<strong class="text-success">Hotkeys: ON</strong>');
+            } else {
+                label.html('<strong class="text-danger">Hotkeys: OFF</strong>');
+            }
+        });
+
+        // === INSTANT R-ORDER HOTKEYS: Ctrl+1 = 1R, Ctrl+2 = 2R, etc. ===
+        $(document).on('keydown', function(e) {
+            if (!e.ctrlKey || !hotkeysEnabled) return;
+            const rMap = { '1':1, '2':2, '3':3, '4':4, '5':5 };
+            const r = rMap[e.key];
+            if (!r) return;
+            e.preventDefault();
+            sendInstantOrder(r);
+        });
+
+        function sendInstantOrder(rValue) {
+            const $row = getFocusedRow();
+            if (!$row) return;
+            const ticker = $row.find('.ticker-clickable').data('ticker');
+            if (!ticker) return;
+
+            $(`#r-units-${ticker}`).val(rValue);
+            rToDollar(ticker);
+
+            setTimeout(() => {
+                const lp = parseFloat($(`#last-price-${ticker}`).val()) || 0;
+                const sl = parseFloat($(`#sl-${ticker}`).val()) || 0;
+                const risk = parseFloat($(`#risk-${ticker}`).val()) || 0;
+                if (!lp || !sl || sl <= lp || !risk) return;
+
+                const shares = Math.round(risk / (sl - lp));
+                const target = (lp - 3 * (sl - lp)).toFixed(2);
+                $(`#shares-${ticker}`).val(shares);
+                $(`#target-${ticker}`).val(target);
+                recalcRow(ticker);
+                sendOrder(ticker);
+            }, 80);
+        }
+
+        loadTickers();
+        loadPendingOrders();
+        loadActiveTrades();
+        loadTradeSignals();
+        loadSellMarket();
+        loadStopMarket();
+        loadReplaceStop();
+        loadCanceledStop();
+        loadExecutedStop();
+        loadBuyMarket();
+        loadClosedTrades();
+        loadTradeSummary();
+        updateStatus();
+        setInterval(updateStatus, 60000);
+
+        // AUTO-UPDATE EVERY 2 SECONDS
+        setInterval(() => {
+            $('#live-trading-table tbody tr[id^="live-row-"]').each(function() {
+                const ticker = $(this).attr('id').replace('live-row-', '').toUpperCase();
+                window.updateRow(ticker);  // Already respects SL
+            });
+        }, 2000);
+    });
+</script></body>
+</html>
+

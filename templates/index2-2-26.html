@@ -2,307 +2,339 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Trade Dashboard</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <style>
-        :root {
-            --bg: #0d1117;
-            --surface: #161b22;
-            --border: #30363d;
-            --text: #e6edf3;
-            --muted: #8b949e;
-            --accent: #58a6ff;
-            --green: #3fb950;
-            --red: #f85149;
-            --yellow: #d29922;
+        .target-input {
+            min-width: 100px !important;
+            width: 100%;
         }
-        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 0.85rem; }
-
-        /* NAV */
-        .top-nav {
-            background: #161b22; border-bottom: 1px solid var(--border);
-            padding: 7px 14px; display: flex; align-items: center; gap: 8px;
-            flex-wrap: wrap; position: sticky; top: 0; z-index: 1000;
+        /* Optional: Make Target column wider */
+        #active-trades-table th:nth-child(8),
+        #active-trades-table td:nth-child(8) {
+            min-width: 110px;
         }
-        .top-nav .brand { font-size: 1rem; font-weight: 700; color: var(--accent); white-space: nowrap; }
-        .nav-div { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
-        .nav-links { display: flex; gap: 5px; flex-wrap: wrap; margin-left: auto; }
-        #current-time { background: transparent; border: 1px solid var(--border); color: var(--text); font-size: 0.8rem; padding: 3px 8px; width: 165px; }
-        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); margin-right: 4px; transition: background 0.3s; }
-        .status-dot.connected { background: var(--green); }
-        #status { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
-        .toggle-pill { display: flex; align-items: center; gap: 5px; font-size: 0.78rem; cursor: pointer; }
-
-        /* CARDS */
-        .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; margin-bottom: 14px; overflow: hidden; }
-        .section-header { background: #1c2128; padding: 9px 14px; font-weight: 600; font-size: 0.82rem; color: var(--text); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-        .section-header .hdr-hint { color: var(--muted); font-weight: 400; font-size: 0.75rem; }
-        .collapse-btn { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 4px; padding: 1px 9px; font-size: 0.72rem; cursor: pointer; }
-        .collapse-btn:hover { background: var(--border); }
-        .main-content { padding: 14px; }
-
-        /* TABLES */
-        .table { color: var(--text); font-size: 0.8rem; border-color: var(--border) !important; margin-bottom: 0; }
-        .table thead th { background: #1c2128; border-color: var(--border); color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 5px 7px; white-space: nowrap; }
-        .table td { border-color: var(--border); padding: 4px 7px; vertical-align: middle; }
-        .table tbody tr:hover { background: rgba(88,166,255,0.05); }
-        .table-bordered { border-color: var(--border) !important; }
-
-        /* TABS */
-        .nav-tabs { border-bottom: 1px solid var(--border); }
-        .nav-tabs .nav-link { color: var(--muted); border: none; padding: 7px 14px; font-size: 0.82rem; }
-        .nav-tabs .nav-link.active { background: transparent; border-bottom: 2px solid var(--accent); color: var(--accent); }
-        .nav-tabs .nav-link:hover { color: var(--text); }
-
-        /* INPUTS */
-        .form-control { background: #0d1117; border: 1px solid var(--border); color: var(--text); font-size: 0.8rem; padding: 3px 7px; }
-        .form-control:focus { background: #0d1117; border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 2px rgba(88,166,255,0.15); }
-        .form-control[readonly] { background: #1c2128; color: var(--muted); }
-        select.form-control option { background: #161b22; }
-
-        /* LIVE TRADING TABLE */
-        #live-trading-table tr.main-row.focused { background-color: rgba(88,166,255,0.08) !important; box-shadow: 0 0 5px rgba(88,166,255,0.25); }
-        #live-trading-table td { white-space: nowrap; }
-        #live-trading-table input.form-control { min-width: 75px; box-sizing: border-box; }
-        .ticker-clickable { cursor: pointer; text-decoration: underline; color: var(--accent); font-weight: 600; }
-        .alert-controls button { font-size: 10px; padding: 2px 5px; margin: 0 1px; }
+    </style>
+    <style>
+        #current-time {
+            width: auto;
+            min-width: 160px;
+            padding: 6px 12px;
+        }
+        #live-trading-table tr.main-row.focused {
+            background-color: #e8f5e9 !important;
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+            transition: all 0.2s ease;
+        }
+        #live-trading-table td {
+            white-space: nowrap;
+        }
+        #live-trading-table input.form-control {
+            min-width: 80px;
+            box-sizing: border-box;
+        }
+        .alert-controls button {
+            font-size: 10px;
+            padding: 2px 6px;
+            margin: 0 2px;
+        }
         .subtable-row { display: none; }
-        .located-shares-subtable { margin: 8px; }
-        .located-shares-subtable td, .located-shares-subtable th { height: 34px; vertical-align: middle; white-space: nowrap; }
-        .located-shares-subtable td:nth-child(3), .located-shares-subtable th:nth-child(3) { width: 140px; }
-        .located-shares-subtable td:nth-child(6), .located-shares-subtable th:nth-child(6) { width: 80px; }
+        .ticker-clickable { cursor: pointer; text-decoration: underline; }
+        .located-shares-subtable { margin: 10px; }
+        .located-shares-subtable td, .located-shares-subtable th {
+            height: 38px;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        .located-shares-subtable td:nth-child(3), .located-shares-subtable th:nth-child(3) { width: 150px; }
+        .located-shares-subtable td:nth-child(6), .located-shares-subtable th:nth-child(6) { width: 90px; }
+        #active-trades-table .actions-cell {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+            min-width: 180px;
+            padding: 5px;
+        }
+        #active-trades-table .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        #active-trades-table .btn-success {
+            background-color: #28a745 !important;
+            color: white !important;
+        }
+        #active-trades-table .btn-info {
+            background-color: #17a2b8 !important;
+            color: white !important;
+        }
+        #stoploss-table .price-input {
+            width: 90px;
+        }
+        #stoploss-table .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        #stoploss-table .replace-btn {
+            background-color: #007bff;
+            color: white;
+        }
+        #stoploss-table .replace-btn:hover {
+            background-color: #0056b3;
+        }
+        /* PENDING ORDERS TABLE: Better column widths and input fitting */
+        #pending-orders-table {
+            table-layout: auto; /* Allows columns to size based on content */
+            width: 100%;
+        }
 
-        /* ACTIVE TRADES */
-        .target-input { min-width: 90px !important; width: 100%; }
-        #active-trades-table th:nth-child(8), #active-trades-table td:nth-child(8) { min-width: 110px; }
-        #active-trades-table .actions-cell { display: flex; align-items: center; gap: 4px; white-space: nowrap; min-width: 200px; padding: 3px; }
+        /* Make numeric input fields wider and consistent */
+        #pending-orders-table input[type="number"],
+        #pending-orders-table input[type="text"] {
+            width: 100%;
+            min-width: 90px;     /* Prevents them from becoming too tiny */
+            box-sizing: border-box;
+            text-align: right;   /* Nice alignment for numbers */
+            padding: 6px 8px;
+        }
 
-        /* STOP LOSS TABLE */
-        #stoploss-table .price-input { width: 85px; }
-        #stoploss-table .replace-btn { background-color: #1f6feb; color: white; border: none; }
-        #stoploss-table .replace-btn:hover { background-color: #388bfd; }
+        /* Specific column tweaks */
+        #pending-orders-table th:nth-child(1),  /* Ticker */
+        #pending-orders-table td:nth-child(1) {
+            width: 100px;
+            min-width: 100px;
+        }
 
-        /* PENDING TABLE */
-        #pending-orders-table { table-layout: auto; width: 100%; }
-        #pending-orders-table input { width: 100%; min-width: 75px; box-sizing: border-box; text-align: right; }
-        #pending-orders-table th:nth-child(1), #pending-orders-table td:nth-child(1) { width: 85px; min-width: 85px; }
-        #pending-orders-table th:nth-child(n+2):nth-child(-n+7), #pending-orders-table td:nth-child(n+2):nth-child(-n+7) { width: 90px; min-width: 90px; }
-        #pending-orders-table th:nth-child(8), #pending-orders-table td:nth-child(8) { width: 105px; min-width: 105px; }
-        #pending-orders-table th:nth-child(9), #pending-orders-table td:nth-child(9) { width: 110px; min-width: 110px; }
-        #pending-orders-table th:last-child, #pending-orders-table td:last-child { width: 210px; min-width: 210px; white-space: nowrap; text-align: center; }
-        #pending-orders-table .btn-sm { margin: 0 2px; }
+        #pending-orders-table th:nth-child(2),  /* Risk $ */
+        #pending-orders-table td:nth-child(2),
+        #pending-orders-table th:nth-child(3),  /* Price */
+        #pending-orders-table td:nth-child(3),
+        #pending-orders-table th:nth-child(4),  /* Shares */
+        #pending-orders-table td:nth-child(4),
+        #pending-orders-table th:nth-child(5),  /* Target */
+        #pending-orders-table td:nth-child(5),
+        #pending-orders-table th:nth-child(6),  /* Stop Loss */
+        #pending-orders-table td:nth-child(6),
+        #pending-orders-table th:nth-child(7) { /* HOD */
+            width: 110px;
+            min-width: 110px;
+        }
 
-        /* TOAST */
-        #toastContainer { position: fixed; top: 56px; right: 14px; z-index: 9999; }
+        /* Strategy dropdown */
+        #pending-orders-table th:nth-child(8),
+        #pending-orders-table td:nth-child(8) {
+            width: 120px;
+            min-width: 120px;
+        }
 
-        /* MODAL */
-        .modal-content { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-        .modal-header { background: #1c2128; border-bottom: 1px solid var(--border); }
-        .strategy-item { background: #1c2128; border-radius: 6px; margin-bottom: 8px; padding: 10px 12px; }
+        /* Time */
+        #pending-orders-table th:nth-child(9),
+        #pending-orders-table td:nth-child(9) {
+            width: 130px;
+            min-width: 130px;
+        }
+
+        /* Actions column - horizontal buttons */
+        #pending-orders-table th:last-child,
+        #pending-orders-table td:last-child {
+            width: 240px;
+            min-width: 240px;
+            white-space: nowrap;
+            text-align: center;
+        }
+
+        #pending-orders-table .btn-sm {
+            margin: 0 4px;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
-<div id="toastContainer" style="position:fixed;top:12px;right:14px;z-index:9999;min-width:260px;"></div>
-
-<nav class="top-nav">
-    <span class="brand">TradingBot</span>
-    <div class="nav-div"></div>
-    <span class="status-dot" id="status-dot"></span>
-    <span id="status" style="white-space:nowrap;">Not connected</span>
-    <div class="nav-div"></div>
-    <button id="connect-button" class="btn btn-sm btn-primary">Connect</button>
-    <button id="disconnect-button" class="btn btn-sm btn-danger">Disconnect</button>
-    <div class="nav-div"></div>
-    <div class="toggle-pill">
-        <input type="checkbox" id="botToggle" checked>
-        <label for="botToggle" class="text-success mb-0"><strong>Bot: ON</strong></label>
+    <!-- Toast Container (top-right corner, fixed position) -->
+    <div aria-live="polite" aria-atomic="true" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+        <div id="toastContainer" class="toast-container"></div>
     </div>
-    <div class="toggle-pill">
-        <input type="checkbox" id="hotkeyToggle" checked>
-        <label for="hotkeyToggle" class="text-success mb-0"><strong>Hotkeys: ON</strong></label>
-    </div>
-    <div class="nav-div"></div>
-    <button id="account-toggle-btn" class="btn btn-sm btn-success" onclick="toggleAccountMode()" title="Takes effect on next DAS reconnect">LIVE: 104832</button>
-    <input type="text" id="current-time" class="form-control" readonly>
-    <div class="nav-links">
-        <a href="/trade_report" class="btn btn-sm btn-outline-secondary">Reports</a>
-        <a href="/candle_conditions" class="btn btn-sm btn-outline-info" target="_blank">Candles</a>
-        <a href="/multi_monitor" class="btn btn-sm btn-outline-warning" target="_blank">Multi</a>
-        <a href="/add_ticker_page" class="btn btn-sm btn-outline-primary" target="_blank">+ Ticker</a>
-        <a href="/manual_trade" class="btn btn-sm btn-outline-success" target="_blank">+ Manual</a>
-    </div>
-</nav>
+    <div class="container">
+        <h1 class="mt-5">Trade Dashboard</h1>
+        <div class="d-flex align-items-center mb-3">
+            <a href="/trade_report" class="btn btn-secondary mr-3">View Trade Reports</a>
+            <a href="/candle_conditions" class="btn btn-info mr-3" target="_blank">Candle Conditions</a>
+            <a href="/add_ticker_page" class="btn btn-primary mr-3" target="_blank">+ Add Ticker</a>
+            <input type="text" id="current-time" class="form-control" readonly>
 
-<div class="main-content">
+            <!-- THIS IS ALL YOU NEED IN THE MAIN PAGE -->
+            <a href="/manual_trade" class="btn btn-success ml-auto" target="_blank">
+                <strong>+ Add Manual Trade</strong>
+            </a>
+        </div>
+        <div id="status" class="mb-3"></div>
+        <button id="connect-button" class="btn btn-primary">Connect</button>
+        <button id="disconnect-button" class="btn btn-danger">Disconnect</button>
 
-    <!-- TICKER MONITOR -->
-    <div class="section-card">
-        <div class="section-header">Ticker Monitor <span class="hdr-hint">Live quotes &amp; order entry</span></div>
-        <div>
-        <ul class="nav nav-tabs px-3 pt-2" id="tickerMonitorTabs" role="tablist">
+        
+
+        <div class="form-check form-switch mt-3">
+            <input class="form-check-input" type="checkbox" id="hotkeyToggle" checked>
+            <label class="form-check-label text-success" for="hotkeyToggle">
+                <strong>Hotkeys: ON</strong>
+            </label>
+            <small class="text-muted mb-0">
+                {Ctrl+1–5: Quick 1R–5R anywhere in row • Double Enter: Confirm & send in Shares field}
+    </small>
+        </div>
+
+        <div class="form-check form-switch mt-3">
+            <input class="form-check-input" type="checkbox" id="botToggle" checked>
+            <label class="form-check-label text-success" for="botToggle">
+                <strong>Bot: ON</strong>
+            </label>
+        </div>
+
+        <h2 class="mt-5">Ticker Monitor</h2>
+        <ul class="nav nav-tabs" id="tickerMonitorTabs" role="tablist">
             <li class="nav-item"><a class="nav-link active" id="live-trading-tab" data-toggle="tab" href="#live-trading" role="tab">Live Trading</a></li>
             <li class="nav-item"><a class="nav-link" id="pending-tab" data-toggle="tab" href="#pending" role="tab">Pending</a></li>
             <li class="nav-item"><a class="nav-link" id="all-tickers-tab" data-toggle="tab" href="#all-tickers" role="tab">All Tickers</a></li>
         </ul>
-        <div class="tab-content p-3">
+        <div class="tab-content">
             <div class="tab-pane fade show active" id="live-trading" role="tabpanel">
-                <table class="table table-bordered" id="live-trading-table">
-                    <thead><tr>
-                        <th>Ticker</th><th>R (R)</th><th>Risk $</th><th>Last Price</th>
-                        <th>Shares</th><th>Target</th><th>Stop Loss</th><th>SL%</th>
-                        <th>HOD</th><th>Strategy</th><th>SL Method</th><th>Actions</th>
-                    </tr></thead>
+                <table class="table table-bordered mt-3" id="live-trading-table">
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>R (R)</th>
+                            <th>Risk $</th>
+                            <th>Last Price</th>
+                            <th>Shares</th>
+                            <th>Target</th>
+                            <th>Stop Loss</th>
+                            <th>SL%</th>
+                            <th>HOD</th>
+                            <th>Strategy</th>
+                            <th>SL Method</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
                     <tbody></tbody>
                 </table>
             </div>
+            <!-- NEW PENDING TAB -->
             <div class="tab-pane fade" id="pending" role="tabpanel">
+                <h4 class="mt-3">Pending Orders</h4>
                 <table class="table table-bordered" id="pending-orders-table">
-                    <thead><tr>
-                        <th>Ticker</th><th>Risk $</th><th>Price</th><th>Shares</th>
-                        <th>Target</th><th>Stop Loss</th><th>HOD</th><th>Strategy</th>
-                        <th>Time</th><th>Actions</th>
-                    </tr></thead>
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Risk $</th>
+                            <th>Price</th>
+                            <th>Shares</th>
+                            <th>Target</th>
+                            <th>Stop Loss</th>
+                            <th>HOD</th>
+                            <th>Strategy</th>
+                            <th>Time</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
                     <tbody></tbody>
                 </table>
             </div>
             <div class="tab-pane fade" id="all-tickers" role="tabpanel">
+                <h4 class="mt-3">All Tickers Management</h4>
                 <table class="table table-bordered table-sm" id="all-ticker-monitor-table">
-                    <thead><tr>
-                        <th>Ticker</th><th>Date Time</th><th>RSI 1min</th><th>RSI 5min</th>
-                        <th>Selected Strategies &amp; Risk %</th><th>Actions</th>
-                    </tr></thead>
-                    <tbody></tbody>
+                    <thead class="thead-dark">
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Date Time</th>
+                            <th>RSI 1min</th>
+                            <th>RSI 5min</th>
+                            <th>Selected Strategies & Risk %</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Rows injected by JS -->
+                    </tbody>
                 </table>
             </div>
-        </div>
-        </div>
-    </div>
+        </div>    
 
+        
 
-    <!-- ACTIVE TRADES -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#active-trades-body" style="cursor:pointer;">
-            Active Trades <button class="collapse-btn" onclick="event.stopPropagation()">Toggle</button>
-        </div>
-        <div id="active-trades-body" class="p-3">
-            <table class="table table-bordered" id="active-trades-table">
-                <thead><tr><th>Trade ID</th><th>Time</th><th>Strategy</th><th>Ticker</th><th>Shares</th><th>Entry Price</th><th>Last Price</th><th>Target</th><th>Risk</th><th>SL</th><th>LU</th><th>Unrealized</th><th>Realized</th><th>PNL%</th><th>Actions</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
+        <h2 class="mt-5">Active Trades</h2>
+        <table class="table table-bordered" id="active-trades-table">
+            <thead><tr><th>Trade ID</th><th>Time</th><th>Strategy</th><th>Ticker</th><th>Shares</th><th>Entry Price</th><th>Last Price</th><th>Target</th><th>Risk</th><th>SL</th><th>LU</th><th>Unrealized</th><th>Realized</th><th>PNL%</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+        </table>
 
-    <!-- TRADE SIGNAL -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#trade-signal-body" style="cursor:pointer;">
-            Trade Signal <button class="collapse-btn" onclick="event.stopPropagation()">Toggle</button>
-        </div>
-        <div id="trade-signal-body" class="p-3">
-            <table class="table table-bordered" id="trade-signal-table">
-                <thead><tr><th>Trade ID</th><th>Time</th><th>Strategy</th><th>Ticker</th><th>Price</th><th>Shares</th><th>Target</th><th>HOD</th><th>Risk</th><th>Status</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
+        <h2 class="mt-5">Trade Signal</h2>
+        <table class="table table-bordered" id="trade-signal-table">
+            <thead><tr><th>Trade ID</th><th>Time</th><th>Strategy</th><th>Ticker</th><th>Price</th><th>Shares</th><th>Target</th><th>HOD</th><th>Risk</th><th>Status</th></tr></thead>
+            <tbody></tbody>
+        </table>
 
-    <!-- ORDERS -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#orders-body" style="cursor:pointer;">
-            Orders <button class="collapse-btn" onclick="event.stopPropagation()">Toggle</button>
-        </div>
-        <div id="orders-body" class="p-3">
-            <table class="table table-bordered" id="orders-table">
-                <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
+        <h2 class="mt-5">Orders</h2>
+        <table class="table table-bordered" id="orders-table">
+            <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th></tr></thead>
+            <tbody></tbody>
+        </table>
 
-    <!-- STOP LOSS -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#stoploss-body" style="cursor:pointer;">
-            Stop Loss <button class="collapse-btn" onclick="event.stopPropagation()">Toggle</button>
-        </div>
-        <div id="stoploss-body" class="p-3">
-            <table class="table table-bordered" id="stoploss-table">
-                <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th><th>Actions</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
+        <h2 class="mt-5">StopLoss</h2>
+        <table class="table table-bordered" id="stoploss-table">
+            <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+        </table>
 
-    <!-- REPLACE STOP -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#replacestop-collapse" style="cursor:pointer;">
-            Replace Stop <button class="collapse-btn" onclick="event.stopPropagation()">Show</button>
-        </div>
-        <div class="collapse p-3" id="replacestop-collapse">
+        <h2 class="mt-5">ReplaceStop</h2>
+        <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#replacestop-collapse">Toggle Replace Stop</button>
+        <div class="collapse" id="replacestop-collapse"><div class="card card-body mt-3">
             <table class="table table-bordered" id="replacestop-table">
                 <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th></tr></thead>
                 <tbody></tbody>
             </table>
-        </div>
-    </div>
+        </div></div>
 
-    <!-- CANCELED STOP -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#canceledstop-collapse" style="cursor:pointer;">
-            Canceled Stop <button class="collapse-btn" onclick="event.stopPropagation()">Show</button>
-        </div>
-        <div class="collapse p-3" id="canceledstop-collapse">
+        <h2 class="mt-5">CanceledStop</h2>
+        <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#canceledstop-collapse">Toggle Canceled Stop</button>
+        <div class="collapse" id="canceledstop-collapse"><div class="card card-body mt-3">
             <table class="table table-bordered" id="canceledstop-table">
                 <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th></tr></thead>
                 <tbody></tbody>
             </table>
-        </div>
-    </div>
+        </div></div>
 
-    <!-- EXECUTED STOP -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#executedstop-collapse" style="cursor:pointer;">
-            Executed Stop <button class="collapse-btn" onclick="event.stopPropagation()">Show</button>
-        </div>
-        <div class="collapse p-3" id="executedstop-collapse">
+        <h2 class="mt-5">ExecutedStop</h2>
+        <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#executedstop-collapse">Toggle Executed Stop</button>
+        <div class="collapse" id="executedstop-collapse"><div class="card card-body mt-3">
             <table class="table table-bordered" id="executedstop-table">
                 <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th></tr></thead>
                 <tbody></tbody>
             </table>
-        </div>
-    </div>
+        </div></div>
 
-    <!-- BUY CLOSE -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#buymarket-collapse" style="cursor:pointer;">
-            Buy Close <button class="collapse-btn" onclick="event.stopPropagation()">Show</button>
-        </div>
-        <div class="collapse p-3" id="buymarket-collapse">
+        <h2 class="mt-5">BuyMarket</h2>
+        <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#buymarket-collapse">Toggle Buy Close</button>
+        <div class="collapse" id="buymarket-collapse"><div class="card card-body mt-3">
             <table class="table table-bordered" id="buymarket-table">
                 <thead><tr><th>Trade ID</th><th>Strategy</th><th>Time</th><th>Ticker</th><th>Shares</th><th>Price</th><th>Action</th><th>Status</th><th>ActStatus</th><th>Note</th></tr></thead>
                 <tbody></tbody>
             </table>
-        </div>
-    </div>
+        </div></div>
 
-    <!-- CLOSED TRADES -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#closed-trades-collapse" style="cursor:pointer;">
-            Closed Trades <button class="collapse-btn" onclick="event.stopPropagation()">Show</button>
-        </div>
-        <div class="collapse p-3" id="closed-trades-collapse">
+        <h2 class="mt-5">Closed Trades</h2>
+        <div class="collapse" id="closed-trades-collapse">
             <table class="table table-bordered" id="closed-trades-table">
                 <thead><tr><th>Trade ID</th><th>Strategy</th><th>Ticker</th><th>Shares</th><th>Entry Price</th><th>Entry Time</th><th>Exit</th><th>Exit Time</th><th>Target</th><th>Risk</th><th>SLoss</th><th>RR</th><th>Reason</th><th>Realized</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
-    </div>
+        <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#closed-trades-collapse">Toggle Closed Trades</button>
 
-    <!-- TRADE SUMMARY -->
-    <div class="section-card">
-        <div class="section-header" data-toggle="collapse" data-target="#trade-summary-collapse" style="cursor:pointer;">
-            Trade Summary <button class="collapse-btn" onclick="event.stopPropagation()">Show</button>
-        </div>
-        <div class="collapse p-3" id="trade-summary-collapse">
+        <h2 class="mt-5">Trade Summary</h2>
+        <div class="collapse" id="trade-summary-collapse">
             <table class="table table-bordered" id="trade-summary-table">
                 <thead><tr><th>Signal</th><th>Total Trades</th><th>Gain</th><th>Loss</th><th>Total Risk</th><th>Total Gain/Loss</th></tr></thead>
                 <tbody>
@@ -314,15 +346,14 @@
                 </tbody>
             </table>
         </div>
+        <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#trade-summary-collapse">Toggle Trade Summary</button>
     </div>
-
-</div>
 
     <!-- Edit Ticker Modal -->
     <div class="modal fade" id="editTickerModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
+            <div class="modal-content" style="background: #1e1e1e; color: white;">
+                <div class="modal-header" style="background: #007bff;">
                     <h5 class="modal-title">Edit Ticker</h5>
                     <button type="button" class="close text-white" data-dismiss="modal">&times;</button>
                 </div>
@@ -360,36 +391,29 @@
 
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io('http://127.0.0.1:5001', {
+            path: '/socket.io',
+            transports: ['websocket']
+        });
+
+        socket.on('connect', () => {
+            console.log('CONNECTED TO FLASK-SOCKETIO!');
+        });
+
+    
+    </script>
+
+
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.31.3/js/jquery.tablesorter.min.js"></script>
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <script>
         $(document).ready(function() {
-            const socket = io('http://127.0.0.1:5001', { path: '/socket.io', transports: ['websocket'], reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 1000, reconnectionDelayMax: 5000 });
+            const socket = io({ reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 1000, reconnectionDelayMax: 5000 });
 
-            // === ACCOUNT MODE TOGGLE ===
-            let currentAccountMode = 'live';
 
-            socket.on('account_mode_update', function(data) {
-                currentAccountMode = data.mode;
-                const btn = document.getElementById('account-toggle-btn');
-                if (!btn) return;
-                if (data.mode === 'paper') {
-                    btn.className = 'btn btn-sm btn-warning';
-                    btn.textContent = 'PAPER: ' + data.account;
-                } else {
-                    btn.className = 'btn btn-sm btn-success';
-                    btn.textContent = 'LIVE: ' + data.account;
-                }
-                btn.title = 'Currently using ' + data.mode + ' account. Takes effect on next DAS reconnect.';
-            });
 
-            window.toggleAccountMode = function() {
-                const newMode = currentAccountMode === 'live' ? 'paper' : 'live';
-                if (!confirm('Switch to ' + newMode.toUpperCase() + ' account?\nDAS will reconnect automatically — orders placed during reconnect may fail.')) return;
-                socket.emit('set_account_mode', { mode: newMode });
-            };
-
+            
             // === GLOBAL: Real account size ===
             let accountSize = null;
 
@@ -421,207 +445,6 @@
                 const sl = parseFloat($(`#sl-${ticker}`).val()) || 0;
                 calculateSharesAndSLPercent(ticker, lp, sl);
                 syncSubtableShares(ticker);
-
-                // NEW: Update chart lines after recalc (target may have changed)
-                if ($(`#chart-row-${ticker}`).is(':visible')) {
-                    updateChartLines(ticker);
-                }
-            }
-
-            // Step 2: Load and draw enhanced candlestick chart with volume, VWAP, SMAs, HOD, market shading
-            function loadAndDrawChart(ticker) {
-                // Show loading message immediately
-                const chartDiv = $(`#chart-${ticker}`);
-                chartDiv.html('<div style="display:flex; align-items:center; justify-content:center; height:100%; color:#007bff; font-weight:bold;">Loading chart for ' + ticker + '...</div>');
-
-                // Fetch today's 1-min OHLC data
-                const today = new Date().toISOString().split('T')[0];  // YYYY-MM-DD
-                $.get('/get_ohlc_data', { ticker: ticker, date: today }, function(response) {
-                    if (response.status !== 'success' || !response.ohlc || !response.ohlc[ticker]) {
-                        chartDiv.html('<p style="color:red; text-align:center; padding:20px;">No OHLC data available for ' + ticker + ' today</p>');
-                        console.warn('No OHLC data:', response);
-                        return;
-                    }
-
-                    const ohlcData = response.ohlc[ticker];
-                    const x = ohlcData.map(d => d.time);
-                    const open  = ohlcData.map(d => d.open);
-                    const high  = ohlcData.map(d => d.high);
-                    const low   = ohlcData.map(d => d.low);
-                    const close = ohlcData.map(d => d.close);
-                    const volume = ohlcData.map(d => d.volume || 0);
-
-                    // Calculate VWAP (cumulative typical price * volume / cumulative volume)
-                    let cumPriceVol = 0, cumVol = 0;
-                    const vwap = ohlcData.map(d => {
-                        const typPrice = (d.high + d.low + d.close) / 3;
-                        cumPriceVol += typPrice * d.volume;
-                        cumVol += d.volume;
-                        return cumVol ? cumPriceVol / cumVol : null;
-                    });
-
-                    // Calculate SMAs (simple rolling averages)
-                    const sma10 = [], sma20 = [], sma50 = [];
-                    for (let i = 0; i < close.length; i++) {
-                        if (i >= 9)  sma10.push(close.slice(i-9,  i+1).reduce((a,b)=>a+b,0)/10);
-                        if (i >= 19) sma20.push(close.slice(i-19, i+1).reduce((a,b)=>a+b,0)/20);
-                        if (i >= 49) sma50.push(close.slice(i-49, i+1).reduce((a,b)=>a+b,0)/50);
-                    }
-
-                    // HOD (highest high of the day)
-                    const maxHigh = Math.max(...high);
-                    const hodIndex = high.indexOf(maxHigh);
-                    const hodTime = x[hodIndex];
-                    const hodPrice = maxHigh;
-
-                    // Volume colors: green if close > open, red otherwise
-                    const volColors = close.map((c, i) => c > open[i] ? 'green' : 'red');
-
-                    // Traces
-                    const traces = [
-                        // Candlestick (main chart)
-                        {
-                            x: x, open: open, high: high, low: low, close: close,
-                            type: 'candlestick',
-                            name: ticker + ' 1-min',
-                            increasing: {line: {color: 'green'}},
-                            decreasing: {line: {color: 'red'}}
-                        },
-                        // VWAP
-                        { x: x, y: vwap, type: 'scatter', mode: 'lines', name: 'VWAP', line: {color: 'yellow', width: 2} },
-                        // SMAs (shifted to match lengths)
-                        { x: x.slice(9),  y: sma10, type: 'scatter', mode: 'lines', name: '10 SMA', line: {color: 'red',   width: 1.5} },
-                        { x: x.slice(19), y: sma20, type: 'scatter', mode: 'lines', name: '20 SMA', line: {color: 'blue',  width: 1.5} },
-                        { x: x.slice(49), y: sma50, type: 'scatter', mode: 'lines', name: '50 SMA', line: {color: 'purple', width: 1.5} },
-                        // HOD marker
-                        {
-                            x: [hodTime], y: [hodPrice], mode: 'markers+text',
-                            text: [`HOD (${hodPrice.toFixed(2)})`],
-                            textposition: 'top center',
-                            marker: {color: 'green', size: 10, symbol: 'circle'},
-                            textfont: {color: 'green', size: 12, family: 'Arial Black'},
-                            name: 'HOD',
-                            showlegend: false
-                        },
-                        // Volume bars (bottom subplot)
-                        {
-                            x: x, y: volume,
-                            type: 'bar',
-                            name: 'Volume',
-                            marker: {color: volColors, opacity: 0.6},
-                            yaxis: 'y2'  // ← links to second y-axis
-                        }
-                    ];
-
-                    // Layout with two rows (price 70%, volume 30%)
-                    const layout = {
-                        title: ticker + ' – 1-minute chart (today)',
-                        grid: {rows: 2, columns: 1, pattern: 'independent'},
-                        xaxis: {rangeslider: {visible: false}, showgrid: false},
-                        yaxis:  {domain: [0.3, 1], title: 'Price'},     // Price takes top 70%
-                        yaxis2: {domain: [0, 0.25], title: 'Volume'},    // Volume bottom 25%
-                        dragmode: 'pan',
-                        hovermode: 'x unified',
-                        spikedistance: 1000,
-                        showlegend: false,
-                        height: 500,
-                        margin: {l: 50, r: 30, t: 60, b: 60},
-                        shapes: [
-                            // Market hours shading (9:30–16:00)
-                            // Note: assumes x values are strings; adjust if needed
-                            {
-                                type: 'rect',
-                                x0: x[0], x1: x[x.length-1],  // full day range (or use actual times)
-                                y0: 0, y1: 1, yref: 'paper',
-                                fillcolor: 'orange', opacity: 0.15,
-                                line: {width: 0}
-                            }
-                        ]
-                    };
-
-                    Plotly.newPlot('chart-' + ticker, traces, layout, {
-                        scrollZoom: true,
-                        displayModeBar: true
-                    }).then(function() {
-                        console.log('Chart fully rendered – calling initial updateChartLines for', ticker);
-                        updateChartLines(ticker);  // Initial call
-                    }).catch(function(err) {
-                        console.error('Plotly render failed:', err);
-                    });
-
-                }).fail(function(jqXHR, textStatus, errorThrown) {
-                    chartDiv.html('<p style="color:red; text-align:center; padding:20px;">Error loading data: ' + textStatus + '</p>');
-                    console.error('OHLC fetch failed:', textStatus, errorThrown);
-                });
-            }
-
-            // Update horizontal lines for Entry, Target, and Stop Loss
-            function updateChartLines(ticker, retryCount = 0) {
-                const chartId = 'chart-' + ticker;
-                const chartElement = document.getElementById(chartId);
-                if (!chartElement) return;
-
-                const gd = chartElement;
-                if (!gd || !gd._fullLayout) {
-                    if (retryCount < 5) {
-                        const delay = 100 * Math.pow(1.5, retryCount);
-                        console.log(`Chart not ready for ${ticker} (attempt ${retryCount+1}) – retry in ${delay}ms`);
-                        setTimeout(() => updateChartLines(ticker, retryCount + 1), delay);
-                    } else {
-                        console.warn(`Gave up on updateChartLines for ${ticker}`);
-                    }
-                    return;
-                }
-
-                let shapes = gd._fullLayout.shapes || [];
-
-                // Remove old lines (Entry, Target, SL)
-                shapes = shapes.filter(shape => 
-                    !(shape.label && shape.label.text && 
-                      (shape.label.text.includes('Entry') || 
-                       shape.label.text.includes('Target') || 
-                       shape.label.text.includes('SL')))
-                );
-
-                const entryPrice  = parseFloat($(`#last-price-${ticker}`).val()) || null;
-                const targetPrice = parseFloat($(`#target-${ticker}`).val()) || null;
-                const stopPrice   = parseFloat($(`#sl-${ticker}`).val()) || null;
-
-                // Entry (blue)
-                if (entryPrice !== null && !isNaN(entryPrice)) {
-                    shapes.push({
-                        type: 'line',
-                        xref: 'paper', x0: 0, x1: 1,
-                        yref: 'y', y0: entryPrice, y1: entryPrice,
-                        line: { color: 'blue', width: 2, dash: 'dash' },
-                        label: { text: `Entry ${entryPrice.toFixed(2)}`, textposition: 'end', font: { color: 'blue', size: 12 } }
-                    });
-                }
-
-                // Target (green)
-                if (targetPrice !== null && !isNaN(targetPrice)) {
-                    shapes.push({
-                        type: 'line',
-                        xref: 'paper', x0: 0, x1: 1,
-                        yref: 'y', y0: targetPrice, y1: targetPrice,
-                        line: { color: 'green', width: 2, dash: 'dash' },
-                        label: { text: `Target ${targetPrice.toFixed(2)}`, textposition: 'end', font: { color: 'green', size: 12 } }
-                    });
-                }
-
-                // Stop Loss (red) – only if valid and greater than entry (typical for shorts)
-                if (stopPrice !== null && !isNaN(stopPrice) && entryPrice && stopPrice > entryPrice) {
-                    shapes.push({
-                        type: 'line',
-                        xref: 'paper', x0: 0, x1: 1,
-                        yref: 'y', y0: stopPrice, y1: stopPrice,
-                        line: { color: 'red', width: 2, dash: 'dash' },
-                        label: { text: `SL ${stopPrice.toFixed(2)}`, textposition: 'end', font: { color: 'red', size: 12 } }
-                    });
-                }
-
-                Plotly.relayout(chartId, { shapes: shapes });
-                console.log('Lines (Entry/Target/SL) updated for', ticker);
             }
 
             // === INPUT LISTENERS (Two-way sync) ===
@@ -656,18 +479,10 @@
                 };
             }
             // === SOCKET EVENTS ===
-            socket.on('disconnect', reason => {
-                $('#status').text('Disconnected – ' + reason).css('color', 'var(--red)');
-                $('#status-dot').removeClass('connected');
-            });
-            socket.on('connect', () => {
-                $('#status').text('Connected to server').css('color', 'var(--green)');
-                $('#status-dot').addClass('connected');
-                socket.emit('request_account_mode');
-            });
+            socket.on('disconnect', reason => $('#status').text('Disconnected – ' + reason).css('color', 'red'));
+            socket.on('connect', () => $('#status').text('Connected to server').css('color', 'green'));
             socket.on('reconnect', () => {
-                $('#status').text('Connected to server').css('color', 'var(--green)');
-                $('#status-dot').addClass('connected');
+                $('#status').text('Connected to server').css('color', 'green');
                 loadPendingOrders(); loadTickers(); loadActiveTrades(); loadTradeSignals(); loadSellMarket(); loadStopMarket();
                 loadReplaceStop(); loadCanceledStop(); loadExecutedStop(); loadBuyMarket(); loadClosedTrades(); loadTradeSummary();
             });
@@ -678,35 +493,13 @@
 
             socket.on('update_last_price', function(data) {
                 const ticker = (data.ticker || '').toUpperCase();
-                const lp = data.last_price;
-
-                // Ticker Monitor — live price field
                 const lastPriceField = $(`#last-price-${ticker}`);
                 if (lastPriceField.length) {
-                    lastPriceField.val(lp.toFixed(2));
+                    lastPriceField.val(data.last_price.toFixed(2));
                     const stopLoss = parseFloat($(`#sl-${ticker}`).val());
-                    calculateSharesAndSLPercent(ticker, lp, stopLoss);
+                    calculateSharesAndSLPercent(ticker, data.last_price, stopLoss);
                     syncSubtableShares(ticker);
                 }
-
-                // Active Trades — live last price + unrealized PnL recalc
-                $(`#active-trades-table tbody tr[data-ticker="${ticker}"]`).each(function() {
-                    const tradeID  = $(this).data('trade-id');
-                    const entry    = parseFloat($(this).data('entry-price')) || 0;
-                    const shares   = parseFloat($(this).data('shares'))      || 0;
-                    const realized = parseFloat($(this).data('realized'))     || 0;
-
-                    $(`#at-lp-${tradeID}`).text(lp.toFixed(2));
-
-                    if (!entry || !shares) return;  // can't compute PnL without entry/shares
-                    const unrealized = (entry - lp) * shares;  // short: profit when price drops
-                    const totalPnl   = realized + unrealized;
-                    const pnlPct     = ((totalPnl / (entry * shares)) * 100).toFixed(2) + '%';
-                    const color      = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
-
-                    $(`#at-unreal-${tradeID}`).text(unrealized.toFixed(2)).css('color', unrealized >= 0 ? 'var(--green)' : 'var(--red)');
-                    $(`#at-pnl-${tradeID}`).text(pnlPct).css('color', color);
-                });
             });
 
             socket.on('update_order_data', function(data) {
@@ -938,77 +731,65 @@
                 if (!trade || typeof trade !== 'object') return;
                 if (!trade.tradeID || trade.tradeID === 'undefined' || trade.tradeID.trim() === '') return;
 
-                const tradeID    = trade.tradeID;
-                const tickerUp   = (trade.ticker || '').toUpperCase();
+                // === CALCULATE PNL% UP FRONT (used in both cases) ===
                 const entryPrice = parseFloat(trade.entry_price) || 0;
-                const shares     = parseFloat(trade.shares) || 0;
+                const shares = parseFloat(trade.shares) || 0;
                 const unrealized = parseFloat(trade.unrealized) || 0;
-                const realized   = parseFloat(trade.realized) || 0;
-                const totalPnl   = realized + unrealized;
-                const pnlPct     = (entryPrice && shares)
-                    ? ((totalPnl / (entryPrice * shares)) * 100).toFixed(2) + '%'
+                const pnlPercent = (entryPrice && shares) 
+                    ? ((unrealized / (entryPrice * shares)) * 100).toFixed(2) 
                     : 'N/A';
-                const unrColor = unrealized >= 0 ? 'var(--green)' : 'var(--red)';
-                const pnlColor = totalPnl   >= 0 ? 'var(--green)' : 'var(--red)';
-
-                const slText  = trade.stop_loss !== null && !isNaN(trade.stop_loss) ? parseFloat(trade.stop_loss).toFixed(2) : 'N/A';
-                const noStop  = !trade.stopOrderID || trade.stopOrderID === 'N/A';
-                const slHtml  = noStop ? `<span style="color:red;font-weight:bold" title="No stop in DAS">⚠ ${slText}</span>` : slText;
-                const lpText  = trade.last_price !== null && !isNaN(trade.last_price) ? parseFloat(trade.last_price).toFixed(2) : 'N/A';
 
                 const tbody = $('#active-trades-table tbody');
-                const row = tbody.find(`tr[data-trade-id="${tradeID}"]`);
+                const row = tbody.find(`tr td:first-child:contains('${trade.tradeID}')`);
                 if (row.length) {
-                    // Update data attrs so live price handler stays accurate
-                    row.attr('data-entry-price', entryPrice)
-                       .attr('data-shares', shares)
-                       .attr('data-realized', realized);
                     row.find('td:eq(1)').text(trade.time || 'N/A');
                     row.find('td:eq(2)').text(trade.strategy || 'N/A');
-                    row.find('td:eq(3)').text(tickerUp);
+                    row.find('td:eq(3)').text(trade.ticker || 'N/A');
                     row.find('td:eq(4)').text(trade.shares || 'N/A');
-                    row.find('td:eq(5)').text(entryPrice ? entryPrice.toFixed(2) : 'N/A');
-                    $(`#at-lp-${tradeID}`).text(lpText);
-                    row.find('td:eq(7)').html(`<input type="number" step="0.01" id="target-${tradeID}" class="form-control target-input" value="${trade.target ? parseFloat(trade.target).toFixed(2) : ''}" placeholder="Enter target">`);
-                    row.find('td:eq(8)').text(trade.risk !== null && !isNaN(trade.risk) ? parseFloat(trade.risk).toFixed(2) : '0.00');
-                    row.find('td:eq(9)').html(slHtml);
+                    row.find('td:eq(5)').text(trade.entry_price !== null && !isNaN(trade.entry_price) ? parseFloat(trade.entry_price).toFixed(2) : 'N/A');
+                    row.find('td:eq(6)').text(trade.last_price !== null && !isNaN(trade.last_price) ? parseFloat(trade.last_price).toFixed(2) : 'N/A');
+                    row.find('td:eq(7)').html(`<input type="number" step="0.01" id="target-${trade.tradeID}" class="form-control target-input" value="${trade.target ? parseFloat(trade.target).toFixed(2) : ''}" placeholder="Enter target">`);
+                    row.find('td:eq(8)').text(trade.risk !== null && !isNaN(trade.risk) ? parseFloat(trade.risk).toFixed(2) : '0.00'); // RISK
+                    row.find('td:eq(9)').text(trade.stop_loss !== null && !isNaN(trade.stop_loss) ? parseFloat(trade.stop_loss).toFixed(2) : 'N/A');
                     row.find('td:eq(10)').text(trade.lu_price !== null && !isNaN(trade.lu_price) ? parseFloat(trade.lu_price).toFixed(2) : 'N/A');
-                    $(`#at-unreal-${tradeID}`).text(unrealized.toFixed(2)).css('color', unrColor);
-                    row.find('td:eq(12)').text(realized.toFixed(2));
-                    $(`#at-pnl-${tradeID}`).text(pnlPct).css('color', pnlColor);
+                    row.find('td:eq(11)').text(trade.unrealized !== null && !isNaN(trade.unrealized) ? parseFloat(trade.unrealized).toFixed(2) : 'N/A');
+                    row.find('td:eq(12)').text(trade.realized !== null && !isNaN(trade.realized) ? parseFloat(trade.realized).toFixed(2) : '0.00');  // NEW
+                    row.find('td:eq(13)').text(pnlPercent !== 'N/A' ? `${pnlPercent}%` : 'N/A'); // PNL%
+                    // === ADD THIS RIGHT BEFORE the trigger('update') ===
                     row.find('td:eq(14)').html(`
                         <div class="actions-cell">
-                            <button class="btn btn-success btn-sm" onclick="closeTrade('${trade.ticker}', '${tradeID}')">Close</button>
-                            <button class="btn btn-warning btn-sm" onclick="partialClose('${tradeID}', '${trade.ticker}')">Close Half</button>
-                            <button class="btn btn-info btn-sm" onclick="updateTradeTarget('${tradeID}', '${trade.ticker}')">Update Target</button>
+                            <button class="btn btn-success btn-sm" onclick="closeTrade('${trade.ticker}', '${trade.tradeID}')">Close</button>
+                            <button class="btn btn-warning btn-sm" onclick="partialClose('${trade.tradeID}', '${trade.ticker}')">Close Half</button>
+                            <button class="btn btn-info btn-sm" onclick="updateTradeTarget('${trade.tradeID}', '${trade.ticker}')">Update Target</button>
                         </div>
                     `);
                     $('#active-trades-table').trigger('update');
                 } else {
                     tbody.append(`
-                        <tr data-ticker="${tickerUp}"
-                            data-trade-id="${tradeID}"
-                            data-entry-price="${entryPrice}"
-                            data-shares="${shares}"
-                            data-realized="${realized}">
-                            <td>${tradeID}</td>
+                        <tr>
+                            <td>${trade.tradeID}</td>
                             <td>${trade.time || 'N/A'}</td>
                             <td>${trade.strategy || 'N/A'}</td>
-                            <td>${tickerUp}</td>
+                            <td>${trade.ticker || 'N/A'}</td>
                             <td>${trade.shares || 'N/A'}</td>
-                            <td>${entryPrice ? entryPrice.toFixed(2) : 'N/A'}</td>
-                            <td id="at-lp-${tradeID}">${lpText}</td>
-                            <td><input type="number" step="0.01" id="target-${tradeID}" class="form-control target-input" value="${trade.target ? parseFloat(trade.target).toFixed(2) : ''}" placeholder="Enter target"></td>
-                            <td>${trade.risk !== null ? parseFloat(trade.risk).toFixed(2) : '0.00'}</td>
-                            <td>${slHtml}</td>
+                            <td>${trade.entry_price !== null && !isNaN(trade.entry_price) ? parseFloat(trade.entry_price).toFixed(2) : 'N/A'}</td>
+                            <td>${trade.last_price !== null && !isNaN(trade.last_price) ? parseFloat(trade.last_price).toFixed(2) : 'N/A'}</td>
+                            <td>
+                                <input type="number" step="0.01" id="target-${trade.tradeID}" 
+                                class="form-control target-input" 
+                                value="${trade.target ? parseFloat(trade.target).toFixed(2) : ''}" 
+                                placeholder="Enter target">
+                            </td>
+                            <td>${trade.risk !== null ? parseFloat(trade.risk).toFixed(2) : '0.00'}</td> <!-- NEW -->
+                            <td>${trade.stop_loss !== null && !isNaN(trade.stop_loss) ? parseFloat(trade.stop_loss).toFixed(2) : 'N/A'}</td>
                             <td>${trade.lu_price !== null && !isNaN(trade.lu_price) ? parseFloat(trade.lu_price).toFixed(2) : 'N/A'}</td>
-                            <td id="at-unreal-${tradeID}" style="color:${unrColor}">${unrealized.toFixed(2)}</td>
-                            <td>${realized.toFixed(2)}</td>
-                            <td id="at-pnl-${tradeID}" style="color:${pnlColor}">${pnlPct}</td>
+                            <td>${trade.unrealized !== null && !isNaN(trade.unrealized) ? parseFloat(trade.unrealized).toFixed(2) : 'N/A'}</td>
+                            <td>${trade.realized !== null && !isNaN(trade.realized) ? parseFloat(trade.realized).toFixed(2) : '0.00'}</td>  <!-- NEW -->
+                            <td>${pnlPercent !== 'N/A' ? `${pnlPercent}%` : 'N/A'}</td>
                             <td class="actions-cell">
-                                <button class="btn btn-success btn-sm" onclick="closeTrade('${trade.ticker}', '${tradeID}')">Close</button>
-                                <button class="btn btn-warning btn-sm" onclick="partialClose('${tradeID}', '${trade.ticker}')">Close Half</button>
-                                <button class="btn btn-info btn-sm" onclick="updateTradeTarget('${tradeID}', '${trade.ticker}')">Update Target</button>
+                                <button class="btn btn-success btn-sm" onclick="closeTrade('${trade.ticker}', '${trade.tradeID}')">Close</button>
+                                <button class="btn btn-warning btn-sm" onclick="partialClose('${trade.tradeID}', '${trade.ticker}')">Close Half</button>
+                                <button class="btn btn-info btn-sm" onclick="updateTradeTarget('${trade.tradeID}', '${trade.ticker}')">Update Target</button>
                             </td>
                         </tr>
                     `);
@@ -1048,25 +829,14 @@
             });
 
             socket.on('active_trade_remove', function(data) {
-                $(`#active-trades-table tbody tr[data-trade-id="${data.tradeID}"]`).remove();
-            });
-
-            socket.on('stop_upgraded', function(data) {
-                const msg = `⚠ ${data.ticker} stop-limit upgraded to market @ $${parseFloat(data.stop_price).toFixed(2)} (price gapped through limit)`;
-                showToast(msg, 'warning');
-                const row = $(`#active-trades-table tbody tr[data-trade-id="${data.tradeID}"]`);
-                if (row.length) row.find('td:eq(9)').css('color', 'var(--yellow)').attr('title', 'Upgraded to STOPMKT');
-            });
-
-            socket.on('missed_entry', function(data) {
-                const msg = `⚠ ${data.ticker} entry missed — price $${parseFloat(data.current_price).toFixed(2)} skipped past $${parseFloat(data.entry_price).toFixed(2)}. Order canceled.`;
-                showToast(msg, 'danger');
+                const tbody = $('#active-trades-table tbody');
+                const row = tbody.find(`tr td:first-child:contains('${data.tradeID}')`);
+                if (row.length) row.parent().remove();
             });
 
             socket.on('replace_stop_update', function(order) {
                 const tbody = $('#replacestop-table tbody');
                 const orderID = order.orderID || '';
-                const tradeID = order.tradeID || '';
                 const existingRow = tbody.find(`tr td:nth-child(7):contains('${tradeID}')`).closest('tr');
 
                 const rowHTML = `
@@ -1089,14 +859,6 @@
                     existingRow.replaceWith(rowHTML);
                 } else {
                     tbody.append(rowHTML);
-                }
-
-                // Mirror new stop price into the Active Trades SL cell
-                if (order.tradeID && order.price) {
-                    const atRow = $(`#active-trades-table tbody tr[data-trade-id="${order.tradeID}"]`);
-                    if (atRow.length) {
-                        atRow.find('td:eq(9)').text(parseFloat(order.price).toFixed(2));
-                    }
                 }
             });
 
@@ -1425,7 +1187,6 @@
                                     <option value="limit">Limit</option>
                                     <option value="target" selected>Target</option>
                                     <option value="stop">Stop</option>
-                                    <option value="Multi">Multi (Pyramid)</option>
                                 </select>
                             </td>
                             <td>
@@ -1439,7 +1200,7 @@
                             </td>
                             <td class="actions-cell">
                                 <button class="btn btn-warning btn-sm add-shares-btn" data-ticker="${ticker}">Add</button>
-                                <!-- <button class="btn btn-info update-btn" onclick="updateRow('${ticker}')">Update</button> -->
+                                <button class="btn btn-info update-btn" onclick="updateRow('${ticker}')">Update</button>
                                 <button class="btn btn-secondary btn-sm load-pending-btn" data-ticker="${ticker}">Load</button>
                                 <button class="btn btn-success send-btn" onclick="sendOrder('${ticker}')">Send</button>
                             </td>
@@ -1481,26 +1242,6 @@
                                 </table>
                             </td>
                         </tr>
-                        <tr class="chart-row" id="chart-row-${ticker}" style="display: none;">
-                            <td colspan="14">
-                                <div style="text-align:center; margin-bottom:8px;">
-                                    <label>Chart Height: </label>
-                                    <select id="chart-height-${ticker}" style="padding:4px;">
-                                        <option value="400">Small (400px)</option>
-                                        <option value="500" selected>Medium (500px)</option>
-                                        <option value="700">Large (700px)</option>
-                                        <option value="900">Extra Large (900px)</option>
-                                    </select>
-                                </div>
-                                
-                                <div id="chart-${ticker}" style="height: 500px; width: 100%; border: 1px solid #ccc; margin: 10px 0;"></div>  <!-- Adjustable height; light border for visibility -->
-                                    <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#666;">
-                                        Click ticker to load chart...
-                                    </div>
-                                </div>    
-                            </td>
-                        </tr>
-
                     `);
 
                     // Initialize subtable and alerts
@@ -1534,7 +1275,7 @@
                             const name = strat.replace('1Min-', '1m ').replace('5Min-', '5m ').replace('-', ' ').toUpperCase();
 
                             container.append(`
-                                <div class="strategy-item mb-3 p-3">
+                                <div class="strategy-item mb-3 p-3" style="background:#2a2a2a; border-radius:8px;">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" value="${strat}" id="edit-check-${strat}" ${checked}>
                                         <label class="form-check-label" for="edit-check-${strat}"><strong>${name}</strong></label>
@@ -1593,17 +1334,6 @@
                 });
             });
 
-            $(document).on('change', '[id^="chart-height-"]', function() {
-                const ticker = this.id.split('-')[2];
-                const newHeight = parseInt($(this).val());
-                $(`#chart-${ticker}`).css('height', newHeight + 'px');
-
-                // Resize Plotly chart
-                if (Plotly && document.getElementById('chart-' + ticker)) {
-                    Plotly.Plots.resize('chart-' + ticker);
-                }
-            });
-
             // Delete button
             $(document).on('click', '.delete-ticker-btn', function() {
                 const ticker = $(this).data('ticker');
@@ -1643,7 +1373,6 @@
                                 <option value="limit" ${order.strategy === 'limit' ? 'selected' : ''}>Limit</option>
                                 <option value="target" ${order.strategy === 'target' ? 'selected' : ''}>Target</option>
                                 <option value="stop" ${order.strategy === 'stop' ? 'selected' : ''}>Stop</option>
-                                <option value="Multi" ${order.strategy === 'Multi' ? 'selected' : ''}>Multi (Pyramid)</option>
                             </select>
                         </td>
                         <td><input type="text" class="form-control time-input" value="${order.time || ''}" readonly></td>
@@ -1793,11 +1522,9 @@
                 $.getJSON('/status', function(data) {
                     const statusElement = $('#status');
                     if (data.status === 'connected') {
-                        statusElement.text('Connected to DAS').css('color', 'var(--green)');
-                        $('#status-dot').addClass('connected');
+                        statusElement.text('Connected to DAS').css('color', 'green');
                     } else {
-                        statusElement.text('Disconnected from DAS').css('color', 'var(--red)');
-                        $('#status-dot').removeClass('connected');
+                        statusElement.text('Disconnected from DAS').css('color', 'red');
                     }
                 });
             }
@@ -1952,7 +1679,9 @@
                 });
             }
 
-            // loadAlertStates() called in init block below after loadTickers()
+            // Call after loadTickers()
+            loadTickers();
+            loadAlertStates();  // Add this
 
 
             $(document).on('input', '[id^="sl-"]', function() {
@@ -1960,6 +1689,23 @@
                 const method = $(`#sl-method-${ticker}`).val();
                 if (method === 'SL') {
                     recalcRow(ticker);
+                }
+            });
+
+            $(document).on('change', '[id^="sl-method-"]', function() {
+                const ticker = this.id.split('-')[2];
+                const method = $(this).val();
+
+                if (method === 'SL') {
+                    $(`#sl-${ticker}`).val('').prop('readonly', false);
+                    $(`#shares-${ticker}`).val('');
+                    $(`#sl-percent-${ticker}`).val('');
+                    $(`#target-${ticker}`).val('');
+                    syncSubtableShares(ticker);
+                    recalcRow(ticker); // Recalc using blank or manual SL
+                } else {
+                    $(`#sl-${ticker}`).prop('readonly', true);
+                    updateRow(ticker, method);
                 }
             });
 
@@ -2011,16 +1757,6 @@
                 const ticker = $(this).data('ticker');
                 $(`#subtable-${ticker}`).toggle();
                 syncSubtableShares(ticker);
-
-                // NEW: Toggle chart row
-                const chartRow = $(`#chart-row-${ticker}`);
-                chartRow.toggle();
-    
-                // Optional: Load chart only the first time it's shown
-                if (chartRow.is(':visible') && !$(`#chart-${ticker}`).data('chart-loaded')) {
-                    loadAndDrawChart(ticker);           // ← we will create this function in Step 2
-                    $(`#chart-${ticker}`).data('chart-loaded', true);  // Prevent reloading every click
-                }
             });
 
             $(document).on('input', '[id^="shares-"]', function() {
@@ -2479,28 +2215,22 @@
                             }
                         }
                         
-                        const unrealColor = unrealized >= 0 ? 'var(--green)' : 'var(--red)';
-                        const pnlColor   = total_pnl   >= 0 ? 'var(--green)' : 'var(--red)';
                         tbody.append(`
-                            <tr data-ticker="${tickerUpper}"
-                                data-trade-id="${trade.tradeID}"
-                                data-entry-price="${entryPrice}"
-                                data-shares="${shares}"
-                                data-realized="${realized}">
+                            <tr>
                                 <td>${trade.tradeID}</td>
                                 <td>${trade.time}</td>
                                 <td>${trade.strategy}</td>
                                 <td>${trade.ticker}</td>
                                 <td>${trade.shares}</td>
                                 <td>${trade.entry_price}</td>
-                                <td id="at-lp-${trade.tradeID}">${lastPrice ? lastPrice.toFixed(2) : ''}</td>
+                                <td>${trade.last_price}</td>
                                 <td><input type="number" step="0.01" id="target-${trade.tradeID}" class="form-control target-input" value="${trade.target ? parseFloat(trade.target).toFixed(2) : ''}" placeholder="Enter target"></td>
                                 <td>${trade.risk !== null ? parseFloat(trade.risk).toFixed(2) : '0.00'}</td>
                                 <td>${trade.stop_loss}</td>
                                 <td>${trade.lu_price}</td>
-                                <td id="at-unreal-${trade.tradeID}" style="color:${unrealColor}">${unrealized.toFixed(2)}</td>
-                                <td>${realized.toFixed(2)}</td>
-                                <td id="at-pnl-${trade.tradeID}" style="color:${pnlColor}">${pnlPercentDisplay}</td>
+                                <td>${parseFloat(trade.unrealized).toFixed(2)}</td>
+                                <td>${parseFloat(trade.realized || 0).toFixed(2)}</td>  <!-- NEW -->
+                                <td>${pnlPercentDisplay}</td>
                                 <td class="actions-cell">
                                     <button class="btn btn-success btn-sm" onclick="closeTrade('${trade.ticker}', '${trade.tradeID}')">Close</button>
                                     <button class="btn btn-warning btn-sm" onclick="partialClose('${trade.tradeID}', '${trade.ticker}')">Close Half</button>
@@ -2681,9 +2411,9 @@
                 const strategy = $(this).val();
                 const $lastPrice = $(`#last-price-${ticker}`);
                 if (strategy === 'stop' || strategy === 'limit') {
-                    $lastPrice.prop('readonly', false).css('background-color', '');
+                    $lastPrice.prop('readonly', false).css('background-color', '#fff');
                 } else {
-                    $lastPrice.prop('readonly', true).css('background-color', '');
+                    $lastPrice.prop('readonly', true).css('background-color', '#f8f9fa');
                     updateRow(ticker);
                 }
             });
@@ -2720,14 +2450,7 @@
                 $(`#sl-${ticker}`).val(stopLoss.toFixed(2));
                 calculateSharesAndSLPercent(ticker, lastPrice, stopLoss);
                 syncSubtableShares(ticker);
-
-                // NEW: Update chart lines if the chart is visible
-                if ($(`#chart-row-${ticker}`).is(':visible')) {
-                    updateChartLines(ticker);
-                }
             });
-
-
 
             // === HELPER: Get currently focused row ===
             function getFocusedRow() {
@@ -2771,7 +2494,7 @@
                 } else {
                     // FIRST ENTER → CONFIRM
                     pendingSend = ticker;
-                    $input.css('background', 'rgba(210,153,34,0.3)')
+                    $input.css('background', '#fff3cd')
                           .attr('placeholder', 'Press Enter again to SEND')
                           .val($input.val()); // Keep value
                 }
@@ -2786,8 +2509,8 @@
 
                 // Flash row green
                 const $row = $(`#live-row-${ticker}`);
-                $row.stop().css('background-color', 'rgba(63,185,80,0.25)')
-                    .animate({ backgroundColor: 'transparent' }, 1000);
+                $row.stop().css('background-color', '#c8e6c9')
+                    .animate({ backgroundColor: '#ffffff' }, 800);
             }
 
             // Clear pending on escape or blur
@@ -2911,7 +2634,6 @@
             }
 
             loadTickers();
-            loadAlertStates();
             loadPendingOrders();
             loadActiveTrades();
             loadTradeSignals();
@@ -2925,15 +2647,6 @@
             loadTradeSummary();
             updateStatus();
             setInterval(updateStatus, 60000);
-
-            // Auto-refresh visible charts every 60 seconds
-            setInterval(() => {
-                $('.chart-row:visible').each(function() {
-                    const ticker = this.id.replace('chart-row-', '');
-                    console.log('Auto-refreshing chart for', ticker);
-                    loadAndDrawChart(ticker);  // Re-fetches and re-draws
-                });
-            }, 60000);
 
             // AUTO-UPDATE EVERY 2 SECONDS
             setInterval(() => {

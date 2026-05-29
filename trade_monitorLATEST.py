@@ -5,10 +5,12 @@ import socket
 import random
 import logging
 import time
+import pytz
 import threading
-from datetime import datetime
+from datetime import datetime, time as dt_time
 import requests
 import os
+
 
 LOCAL_SERVER_HOST = 'localhost'
 LOCAL_SERVER_PORT = 5015
@@ -20,7 +22,10 @@ def generate_token():
     return str(random.randint(100000, 999999))
 
 class TradeMonitor:
-    def __init__(self, db_pool, socketio=None):
+    def __init__(self, db_pool, socketio=None, order_execution=None):
+        self.order_execution = order_execution
+        self.multi_addon_cutoff = dt_time(10, 30)
+        self._multi_cutoff_logged = set()
         self.logger = logging.getLogger('TradeMonitor')
         self.logger.debug("TradeMonitor initialized")
         self.logger.debug(f"TradeMonitor logger handlers: {self.logger.handlers}")
@@ -38,13 +43,51 @@ class TradeMonitor:
         self.processed_trades = set()
         self.latest_prices = {}
         self.active_trades = {}
+        self.multi_pivots = {}                   # ticker -> {pivot_high, add_count, broken, last_trigger_ts}
+        self.multi_original_risk = {}            # ticker -> original dollar risk from first manual order
+        self.multi_current_stop_level = {}       # ticker -> current stop level (new high after break)
         self.last_sync_time = time.time()
+        self.db_lock = threading.Lock()          # ← For generate_auto_id
+        self.logger.info("TradeMonitor initialized with db_lock for trade ID generation")
         if socketio is None:
             self.logger.warning("No SocketIO instance provided; real-time updates will be disabled.")
         else:
             self.logger.info("SocketIO instance provided; real-time updates enabled.")
         self.start_listening_thread()
         self.logger.debug('TradeMonitor instance created.')
+        
+    def generate_auto_id(self):
+        """Copy of StrategyLogic.generate_auto_id - generates next trade ID safely"""
+        conn = None
+        cursor = None
+        try:
+            with self.db_lock:          # We'll add this lock in __init__
+                conn = self.db_pool.getconn()
+                cursor = conn.cursor()
+                
+                # Get current last_trade_id
+                cursor.execute("SELECT last_trade_id FROM tradeidcounter WHERE id = 1")
+                row = cursor.fetchone()
+                last_trade_id = row[0] if row else 0
+                
+                # Increment
+                new_trade_id = last_trade_id + 1
+                
+                # Update counter
+                cursor.execute("UPDATE tradeidcounter SET last_trade_id = %s WHERE id = 1", (new_trade_id,))
+                conn.commit()
+                
+                self.logger.info(f"TradeMonitor generated trade ID: {new_trade_id}")
+                return str(new_trade_id)
+                
+        except psycopg2.Error as e:
+            self.logger.error(f"Error generating trade ID in TradeMonitor: {e}")
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                self.db_pool.putconn(conn)    
 
     def start_listening_thread(self):
         listening_thread = threading.Thread(target=self.listen_to_server, daemon=True)
@@ -332,6 +375,15 @@ class TradeMonitor:
                     
             # Check if the trade should be closed due to target price
             self.check_target_price_and_close_trade(ticker) 
+            
+            # Check for automated partial close at -0.5R loss
+            self.check_partial_close_at_minus_half_r(ticker, last_price)   # ← This call
+                    
+            # === MULTI PYRAMIDING CHECK ===
+            # This must run on every price update for tickers that have active Multi trades
+            if ticker in self.multi_pivots:
+                last_price_float = float(last_price)
+                self.check_multi_pyramiding(ticker, last_price_float)            
                     
         except psycopg2.Error as e:
             self.logger.error(f"Error processing last price update for {ticker}: {e}")
@@ -359,6 +411,100 @@ class TradeMonitor:
         finally:
             if conn:
                 self.db_pool.putconn(conn)
+                
+    def check_partial_close_at_minus_half_r(self, ticker, last_price):
+        """Trigger partial close (half position) when total unrealized loss reaches half the original risk (-0.5R).
+        Applies to ALL active trades (no strategy restriction)."""
+        if not ticker or ticker not in self.latest_prices:
+            return
+
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+
+        conn = None
+        cursor = None
+        try:
+            conn = self.db_pool.getconn()
+            cursor = conn.cursor()
+
+            # Fetch ALL active trades eligible for partial close (no strategy filter)
+            cursor.execute("""
+                SELECT tradeid, shares, entry_price, risk
+                FROM activetrades
+                WHERE ticker = %s 
+                  AND date = %s 
+                  AND partial_closed = FALSE
+                  AND risk > 0
+                  AND shares > 0
+            """, (ticker, today))
+
+            trades = cursor.fetchall()
+            if not trades:
+                return
+
+            for trade_id, shares, entry_price, risk_total in trades:
+                shares = int(shares)
+                entry_price = float(entry_price)
+                risk_total = float(risk_total)
+
+                # Target: trigger when total unrealized loss >= half original risk
+                target_loss = risk_total / 2.0
+
+                # Current total unrealized P/L (for short: positive when in profit)
+                unrealized_total = (entry_price - last_price) * shares
+
+                # Check if we're in loss by at least half the original risk
+                if -unrealized_total >= target_loss:
+                    
+
+                    if shares < 2:
+                        self.logger.warning(f"Skipping partial close {trade_id}: only {shares} share(s)")
+                        continue
+
+                    self.logger.info(
+                        f"AUTOMATED PARTIAL CLOSE AT -0.5R TOTAL LOSS: "
+                        f"{ticker} | trade_id={trade_id} | "
+                        f"unrealized=${unrealized_total:+.2f} (loss >= ${target_loss:.2f}) | "
+                        f"requesting 50% close via /partial_close"
+                    )
+
+                    # Just call the existing route — it handles shares calculation safely
+                    payload = {
+                        'tradeID': trade_id,
+                        'ticker': ticker,
+                        'percent': 50
+                    }
+
+                    success = False
+                    for attempt in range(3):
+                        try:
+                            response = requests.post(
+                                f"{FLASK_SERVER_URL}/partial_close",
+                                json=payload,
+                                timeout=10
+                            )
+                            if response.status_code == 200:
+                                self.logger.info(f"Partial close SUCCESS for {trade_id}")
+                                success = True
+                                break
+                            else:
+                                self.logger.error(f"Attempt {attempt+1}: {response.status_code} {response.text}")
+                        except requests.RequestException as e:
+                            self.logger.error(f"Attempt {attempt+1} failed: {e}")
+
+                        if attempt < 2:
+                            time.sleep(5)
+
+                    if not success:
+                        self.logger.error(f"Failed to trigger partial close for {trade_id} after 3 attempts")
+
+        except Exception as e:
+            self.logger.error(f"Error in check_partial_close_at_minus_half_r for {ticker}: {e}", exc_info=True)
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                self.db_pool.putconn(conn)            
 
     def check_target_price_and_close_trade(self, ticker):
         """Check if last price reaches target price for target strategy trades and close them."""
@@ -435,11 +581,14 @@ class TradeMonitor:
         if missing_fields:
             self.logger.error(f"Missing required fields in trade_details: {missing_fields}")
             return
-        valid_strategies = ['1Min', '5Min', 'market', 'limit', 'target', '1Min-below_sma', '5Min-below_sma', '1Min-2g2r', '5Min-2g2r', 'spara', 'stop']
+        valid_strategies = ['Multi', '1Min', '5Min', 'market', 'limit', 'target', '1Min-below_sma', '5Min-below_sma', '1Min-2g2r', '5Min-2g2r', 'spara', 'stop', '1Min-below_pmh', '5Min-below_pmh', '1Min-vwap_crossover', '5Min-vwap_crossover', '1Min-vwap_dev']
         if trade_details['strategy'] not in valid_strategies:
             self.logger.error(f"Invalid strategy: {trade_details['strategy']}. Must be one of {valid_strategies}")
             return
         self.insert_active_trade(trade_details)
+        if trade_details.get('strategy') == 'Multi':
+            if trade_details['ticker'] not in self.multi_pivots:
+                self.handle_first_multi_entry(trade_details)
         self.update_trade_status(trade_details['ticker'], trade_details['strategy'])
         self.update_borrowed_shares(trade_details['ticker'], trade_details['shares'])
         lu_price, last_price = self.get_lu_price_and_last_price(trade_details['ticker'])
@@ -567,7 +716,14 @@ class TradeMonitor:
     def send_replace_order(self, stop_order_id, ticker, shares, new_stop_price, trade_id, source='lu'):
         self.update_stop_loss_in_active_trades(stop_order_id, new_stop_price)
         
-        # CREATE / UPDATE PENDING REPLACES DICT
+        strategy = self.get_strategy_from_trade_id(trade_id)
+        if not strategy:
+            strategy = 'limit'  # your fallback
+
+        shares = str(int(float(shares)))
+        new_stop_price = round(float(new_stop_price), 2)
+
+        # Store pending info
         self.pending_replaces = getattr(self, 'pending_replaces', {})
         self.pending_replaces[stop_order_id] = {
             'trade_id': trade_id,
@@ -576,12 +732,39 @@ class TradeMonitor:
             'price': new_stop_price,
             'source': source
         }
-        command_replace = f"REPLACE {stop_order_id} {shares} STOPMKT {new_stop_price}"
-        client_socket = self.send_command(command_replace)
-        if client_socket:
-            self.logger.info(f"Sent replace order for stopOrderID {ticker}: new stop price {new_stop_price}")
+
+        if strategy == 'market':
+            command = f"REPLACE {stop_order_id} {shares} STOPMKT {new_stop_price:.2f}"
+            self.logger.info(f"[{ticker}] REPLACE STOPMKT {new_stop_price:.2f}")
         else:
-            self.logger.error(f"Failed to send replace order for stopOrderID {ticker}")
+            stop_trigger = round(new_stop_price - 0.02, 2)
+            command = f"REPLACE {stop_order_id} {shares} STOPLMT {stop_trigger:.2f} {new_stop_price:.2f}"
+            self.logger.info(f"[{ticker}] REPLACE STOPLMT -> trigger {stop_trigger:.2f} | limit {new_stop_price:.2f}")
+
+        # ← THIS WAS THE BUG: you sent command_replace instead of command
+        self.send_command(command) 
+                
+    def get_strategy_from_trade_id(self, trade_id):
+        """Fetch strategy from activetrades using trade_id"""
+        try:
+            conn = self.db_pool.getconn()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT strategy FROM activetrades 
+                WHERE tradeid = %s AND date = %s
+            """, (trade_id, datetime.now().strftime('%Y-%m-%d')))
+            result = cursor.fetchone()
+            if result:
+                return result[0]
+            else:
+                self.logger.warning(f"Strategy not found for trade_id {trade_id}")
+                return None
+        except psycopg2.Error as e:
+            self.logger.error(f"Error fetching strategy for trade_id {trade_id}: {e}")
+            return None
+        finally:
+            if conn:
+                self.db_pool.putconn(conn)             
 
     def update_stop_loss_in_active_trades(self, stop_order_id, new_stop_price):
         try:
@@ -679,7 +862,7 @@ class TradeMonitor:
                             time.sleep(0.1)
                     except (socket.error, ConnectionResetError):
                         self.logger.warning("Socket read error. Reconnecting...")
-                        break  # Exit inner loop → reconnect
+                        break  # Exit inner loop-> reconnect
 
                 self.client_socket.close()
                 self.logger.warning("Disconnected from server. Reconnecting in 1s...")
@@ -827,6 +1010,153 @@ class TradeMonitor:
                     self.logger.error(f"Socket error while sending command: {e}")
             else:
                 self.logger.error("Client socket is not connected, cannot send command.")
+                
+    def handle_first_multi_entry(self, trade_details):
+        ticker = trade_details['ticker']
+        risk = float(trade_details.get('risk', 0.0))
+        
+        self.multi_original_risk[ticker] = risk
+        
+        stop_level = self._get_highest_high_so_far(ticker)
+        if stop_level is None:
+            stop_level = float(trade_details.get('entry_price', 0)) + 0.5
+        
+        self.multi_current_stop_level[ticker] = float(stop_level)
+        
+        self.multi_pivots[ticker] = {
+            'pivot_high': float(stop_level),
+            'add_count': 0,
+            'broken': False,
+            'last_trigger_ts': None
+        }
+        
+        self.logger.info(f"MULTI INIT: {ticker} | tradeID={trade_details.get('tradeID')} | "
+                        f"initial_stop={stop_level:.2f} | original_risk=${risk:.2f}")
+
+    def _get_highest_high_so_far(self, ticker):
+        try:
+            conn = self.db_pool.getconn()
+            cursor = conn.cursor()
+            today_str = datetime.now().strftime('%Y/%m/%d')
+            cursor.execute("""
+                SELECT MAX(high) FROM ohlc_5min
+                WHERE ticker = %s AND timestamp LIKE %s
+            """, (ticker, f"{today_str}%"))
+            result = cursor.fetchone()
+            return float(result[0]) if result and result[0] is not None else None
+        except Exception as e:
+            self.logger.error(f"Error getting highest high for {ticker}: {e}")
+            return None
+        finally:
+            if 'conn' in locals() and conn:
+                self.db_pool.putconn(conn)
+
+    def _get_latest_red_5min_candle(self, ticker):
+        try:
+            conn = self.db_pool.getconn()
+            cursor = conn.cursor()
+            today = datetime.now().strftime('%Y/%m/%d')
+            cursor.execute("""
+                SELECT timestamp, open, close
+                FROM ohlc_5min
+                WHERE ticker = %s AND timestamp LIKE %s
+                ORDER BY timestamp DESC LIMIT 1
+            """, (ticker, f"{today}%"))
+            row = cursor.fetchone()
+            if row and float(row[2]) < float(row[1]):
+                return {'timestamp': row[0], 'close': float(row[2])}
+            return None
+        except Exception as e:
+            self.logger.error(f"Error checking red candle for {ticker}: {e}")
+            return None
+        finally:
+            if 'conn' in locals() and conn:
+                self.db_pool.putconn(conn)
+
+    def check_multi_pyramiding(self, ticker, last_price):
+        if ticker not in self.multi_pivots:
+            return
+        
+        
+        # === TIME CUTOFF: No new Multi add-ons after 10:30 AM EST ===
+        now_est = datetime.now(pytz.timezone('US/Eastern'))
+        if now_est.time() > self.multi_addon_cutoff:
+            
+            
+            if ticker not in self._multi_cutoff_logged:
+                self.logger.info(f"MULTI ADD-ON CUTOFF: No more add-ons allowed for {ticker} after 10:30 AM EST")
+                self._multi_cutoff_logged.add(ticker)
+            return
+        
+        data = self.multi_pivots[ticker]
+        if data['add_count'] >= 3:
+            return
+
+        current_stop = self.multi_current_stop_level.get(ticker, 0)
+
+        if last_price > current_stop and not data['broken']:
+            data['broken'] = True
+            self.logger.info(f"MULTI BREAKOUT {ticker}: {last_price:.2f} > {current_stop:.2f}")
+            return
+
+        if not data['broken']:
+            return
+
+        red_candle = self._get_latest_red_5min_candle(ticker)
+        if not red_candle:
+            return
+
+        close_price = red_candle['close']
+        candle_ts = red_candle['timestamp']
+
+        if data.get('last_trigger_ts') != candle_ts:
+            self._place_multi_add_on(ticker, close_price)
+            
+            # Update stop level to new high after this break
+            new_stop = self._get_highest_high_so_far(ticker)
+            if new_stop and new_stop > current_stop:
+                self.multi_current_stop_level[ticker] = new_stop
+                self.logger.info(f"MULTI STOP UPDATED {ticker}: {new_stop:.2f}")
+            
+            data['last_trigger_ts'] = candle_ts
+            data['broken'] = False
+            data['add_count'] += 1
+
+    def _place_multi_add_on(self, ticker, limit_price):
+        if ticker not in self.multi_original_risk or ticker not in self.multi_current_stop_level:
+            return
+
+        entry_price = float(limit_price)
+        stop_loss = self.multi_current_stop_level[ticker]
+        original_risk = self.multi_original_risk[ticker]
+        target_risk = original_risk * 2
+
+        distance = stop_loss - entry_price
+        if distance <= 0:
+            self.logger.error(f"Invalid distance for {ticker}: stop={stop_loss}, entry={entry_price}")
+            return
+
+        shares = max(1, int(target_risk / distance))
+        new_risk = round(target_risk, 2)
+
+        try:
+            new_trade_id = self.generate_auto_id()
+        except Exception as e:
+            self.logger.error(f"Failed to generate trade ID for Multi add-on: {e}")
+            return
+
+        self.logger.info(f"MULTI ADD #{self.multi_pivots[ticker]['add_count']+1} | {ticker} | "
+                        f"entry={entry_price:.2f} | stop={stop_loss:.2f} | shares={shares} | risk=${new_risk}")
+
+        try:
+            if not self.order_execution:
+                self.logger.error("order_execution not available in TradeMonitor")
+                return
+            self.order_execution.execute_multi_add_on(
+                new_trade_id, ticker, shares, entry_price, stop_loss, new_risk, 'Multi'
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to place Multi add-on for {ticker}: {e}")            
                 
     def shutdown(self):
         self.keep_listening = False

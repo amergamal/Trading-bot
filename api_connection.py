@@ -1,4 +1,6 @@
-import sqlite3
+import psycopg2
+from psycopg2 import pool
+import config  # Import config.py for DB_CONFIG
 import socket
 import logging
 import time
@@ -7,22 +9,18 @@ from datetime import datetime
 
 
 
-DAS_API_BASE_URL = '127.0.0.1'
-DAS_API_PORT = 9800
-DAS_API_USERNAME = 'CD4832'
-DAS_API_PASSWORD = 'Gamala123'
-DAS_API_ACCOUNT = '104832'
+DAS_API_BASE_URL = config.DAS_CONFIG['host']
+DAS_API_PORT = config.DAS_CONFIG['port']
+DAS_API_USERNAME = config.DAS_CONFIG['username']
+DAS_API_PASSWORD = config.DAS_CONFIG['password']
 LOCAL_SERVER_PORT = 5015
 
 class APIConnection:
     def __init__(self):
         self.logger = logging.getLogger('Server')
-        self.logger.setLevel(logging.DEBUG)
-        handler = logging.StreamHandler()
-        handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
+        self.logger.debug("Initializing APIConnection")
+        self.logger.debug(f"Server logger handlers: {self.logger.handlers}")
+        
         self.sock = None
         self.connected = False
         self.server_socket = None
@@ -31,7 +29,16 @@ class APIConnection:
         self.connection_ready_event = threading.Event()  # Event to signal readiness
         self.clients = []  # List to keep track of connected clients
         self.clients_lock = threading.Lock()  # Lock for thread-safe client management
-        
+        try:
+            self.db_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=20,
+                **config.DB_CONFIG
+            )
+            self.logger.info("PostgreSQL connection pool initialized")
+        except psycopg2.OperationalError as e:
+            self.logger.error(f"Failed to initialize PostgreSQL connection pool: {e}")
+            raise
         
         
     def create_socket(self):
@@ -49,10 +56,10 @@ class APIConnection:
                 self.logger.debug(f'Sending command to DAS: {full_command}')
                 self.sock.sendall(full_command.encode())
             except (OSError, BrokenPipeError) as e:
-                logging.error(f'Error sending command: {e}')
+                self.logger.error(f'Error sending command: {e}')
                 self.handle_disconnection()
         else:
-            logging.warning('Socket is None, cannot send command')
+            self.logger.warning('Socket is None, cannot send command')
 
     def receive_response(self):
         if self.sock:
@@ -74,7 +81,7 @@ class APIConnection:
                 self.logger.debug(f'Received response: {response}')
                 return response
             except (OSError, BrokenPipeError) as e:
-                logging.error(f'Error receiving response: {e}')
+                self.logger.error(f'Error receiving response: {e}')
                 self.handle_disconnection()
                 return None
 
@@ -98,7 +105,7 @@ class APIConnection:
 
     def login(self):
         self.sock = self.create_socket()
-        login_command = f'LOGIN {DAS_API_USERNAME} {DAS_API_PASSWORD} {DAS_API_ACCOUNT} 0'
+        login_command = f'LOGIN {DAS_API_USERNAME} {DAS_API_PASSWORD} {config.get_active_account()} 0'
         self.send_command(login_command)
         while True:
             login_response = self.receive_response()
@@ -115,10 +122,10 @@ class APIConnection:
                 elif '#Welcome to DAS Command API' in login_response:
                     self.logger.info('Welcome message received, waiting for login success...')
                 elif '#Please login to continue.' in login_response:
-                    logging.warning('Received prompt to login again, retrying...')
+                    
                     self.send_command(login_command)
                 else:
-                    logging.error(f'Unexpected login response: {login_response}')
+                    self.logger.error(f'Unexpected login response: {login_response}')
                     self.sock.close()
                     self.connected = False
                     self.update_connection_status(False)
@@ -131,9 +138,9 @@ class APIConnection:
                 try:
                     self.send_command('ECHO')
                 except AttributeError:
-                    logging.warning('Socket is None, skipping keep alive')
+                    self.logger.warning('Socket is None, skipping keep alive')
             else:
-                logging.warning('Socket is None, skipping keep alive')
+                self.logger.warning('Socket is None, skipping keep alive')
 
     def start_local_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -178,12 +185,20 @@ class APIConnection:
         return self.connected
 
     def update_connection_status(self, status):
-        conn = sqlite3.connect('EOD_data.db')
-        c = conn.cursor()
-        c.execute('INSERT INTO connection_status (timestamp, status) VALUES (?, ?)', (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 1 if status else 0))
-        conn.commit()
-        conn.close()
-        self.logger.info(f'Updated connection status to {"True" if status else "False"} in database')
+        try:
+            conn = self.db_pool.getconn()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO connection_status (timestamp, status) 
+                VALUES (%s, %s)
+            """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 1 if status else 0))
+            conn.commit()
+            self.logger.info(f"Updated connection status to {'True' if status else 'False'} in database")
+        except psycopg2.Error as e:
+            self.logger.error(f"Error updating connection status: {e}")
+        finally:
+            if conn:
+                self.db_pool.putconn(conn)
 
     def reconnect(self):
         self.logger.info('Attempting to reconnect...')
@@ -193,7 +208,7 @@ class APIConnection:
                 self.sock = self.create_socket()
                 self.login()
             except Exception as e:
-                logging.error(f'Reconnection failed: {e}')
+                self.logger.error(f'Reconnection failed: {e}')
                 time.sleep(5)  # Wait before retrying
         self.reconnecting = False
 
@@ -204,6 +219,7 @@ if __name__ == "__main__":
         if api_connection.connected:
             threading.Thread(target=api_connection.keep_alive, daemon=True).start()
             threading.Thread(target=api_connection.start_local_server, daemon=True).start()
+            
             # Keep the main thread running
             while True:
                 time.sleep(1)

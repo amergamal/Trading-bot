@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Ticker</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body { background: #121212; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; padding: 40px 0; }
+        .card { background: #1e1e1e; border: none; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+        .card-header { background: #007bff; border-radius: 16px 16px 0 0 !important; }
+        .form-control { background: #2d2d2d; border: 1px solid #444; color: white; }
+        .form-control:focus { background: #333; border-color: #007bff; box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25); }
+        label { font-weight: 600; color: #aaa; }
+        .btn-primary { background-color: #007bff; border: none; padding: 12px 30px; font-size: 1.1rem; }
+        .strategy-item { margin-bottom: 15px; padding: 10px; background: #2a2a2a; border-radius: 8px; }
+        .risk-input { width: 100px; }
+        small { color: #888; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header text-white text-center py-4">
+                    <h3 class="mb-0">Add New Ticker</h3>
+                </div>
+                <div class="card-body p-5">
+                    <form id="addTickerForm">
+                        <div class="form-row mb-4">
+                            <div class="col-md-6">
+                                <label>Ticker</label>
+                                <input type="text" class="form-control" id="ticker" placeholder="TSLA" required style="text-transform: uppercase;">
+                            </div>
+                            <div class="col-md-3">
+                                <label>RSI 1min</label>
+                                <input type="text" class="form-control" id="rsi_1min" value="1" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label>RSI 5min</label>
+                                <input type="text" class="form-control" id="rsi_5min" value="50" required>
+                            </div>
+                        </div>
+
+                        <hr style="border-color: #444;">
+
+                        <h5>Strategies & Risk %</h5>
+                        <p class="text-muted"><small>Select strategies to run for this ticker and set individual risk % of account equity.</small></p>
+
+                        <div id="strategies-container">
+                            <!-- Dynamic strategy checkboxes + risk inputs will be injected here -->
+                            <p class="text-center text-muted"><em>Loading strategies...</em></p>
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer text-center py-4">
+                    <button class="btn btn-secondary mr-3" onclick="window.close()">Cancel</button>
+                    <button class="btn btn-primary btn-lg px-5" id="submitBtn">
+                        <strong>Add Ticker</strong>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<script>
+    //const socket = io('http://127.0.0.1:5001', { path: '/socket.io', transports: ['websocket'] });
+
+    const socket = io({
+    path: '/socket.io',
+    transports: ['polling'] });
+
+    
+
+    // Fetch enabled strategies on load
+    socket.on('connect', () => {
+        socket.emit('request_enabled_strategies');
+    });
+
+    socket.on('enabled_strategies_update', function(data) {
+        const container = $('#strategies-container');
+        container.empty();
+
+        const strategies = data.enabled_strategies || [];
+        if (strategies.length === 0) {
+            container.append('<p class="text-warning">No strategies enabled in backend.</p>');
+            return;
+        }
+
+        strategies.forEach(strategy => {
+            const friendlyName = strategy
+                .replace('1Min-', '1m ')
+                .replace('5Min-', '5m ')
+                .replace('-', ' ')
+                .replace('pmh', 'PMH')
+                .replace('vwap', 'VWAP')
+                .replace('sma', 'SMA')
+                .toUpperCase();
+
+            const item = $(`
+                <div class="strategy-item">
+                    <div class="form-check">
+                        <input class="form-check-input strategy-checkbox" type="checkbox" value="${strategy}" id="check-${strategy}" checked>
+                        <label class="form-check-label" for="check-${strategy}">
+                            <strong>${friendlyName}</strong>
+                        </label>
+                    </div>
+                    <div class="mt-2 risk-group" style="margin-left: 30px;">
+                        <label>Risk % of Account</label>
+                        <input type="number" step="0.1" min="0.1" class="form-control risk-input" value="0.0" id="risk-${strategy}">
+                    </div>
+                </div>
+            `);
+            container.append(item);
+        });
+    });
+
+    // Submit form
+    $('#submitBtn').click(function() {
+        const ticker = $('#ticker').val().trim().toUpperCase();
+        if (!ticker) {
+            alert('Please enter a ticker');
+            return;
+        }
+
+        const rsi_1min = $('#rsi_1min').val();
+        const rsi_5min = $('#rsi_5min').val();
+
+        // Collect selected strategies and their risks
+        const selected = [];
+        const risks = {};
+        $('.strategy-checkbox:checked').each(function() {
+            const strat = $(this).val();
+            selected.push(strat);
+            const riskVal = parseFloat($(`#risk-${strat}`).val());
+            risks[strat] = isNaN(riskVal) ? 1.0 : riskVal;
+        });
+
+        if (selected.length === 0) {
+            alert('Please select at least one strategy');
+            return;
+        }
+
+        const payload = {
+            ticker: ticker,
+            rsi_1min: rsi_1min,
+            rsi_5min: rsi_5min,
+            selected_strategies: selected,
+            strategy_risks: risks
+        };
+
+        $.ajax({
+            url: '/add_ticker',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(payload),
+            success: function(resp) {
+                if (resp.status === 'success') {
+                    alert(`Ticker ${ticker} added successfully!`);
+                    window.close();
+                } else {
+                    alert('Error: ' + (resp.error || 'Unknown'));
+                }
+            },
+            error: function() {
+                alert('Failed to add ticker — server error');
+            }
+        });
+    });
+</script>
+</body>
+</html>

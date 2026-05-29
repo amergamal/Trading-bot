@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Manual Trade</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body { background: #121212; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+        .card { background: #1e1e1e; border: none; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+        .card-header { background: #28a745; border-radius: 16px 16px 0 0 !important; }
+        .form-control { background: #2d2d2d; border: 1px solid #444; color: white; }
+        .form-control:focus { background: #333; border-color: #28a745; box-shadow: 0 0 0 0.2rem rgba(40,167,69,0.25); }
+        label { font-weight: 600; color: #aaa; }
+        .btn-success { background-color: #28a745; border: none; padding: 12px 30px; font-size: 1.1rem; }
+        small { color: #888; }
+        .multi-note {
+            background: #2a2a2a;
+            border-left: 4px solid #28a745;
+            padding: 12px;
+            margin-top: 15px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="py-5">
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-header text-white text-center py-4">
+                    <h3 class="mb-0">Add Manual Trade</h3>
+                </div>
+                <div class="card-body p-5">
+                    <form id="manualForm">
+                        <div class="form-row mb-4">
+                            <div class="col-md-6">
+                                <label>Ticker</label>
+                                <input type="text" class="form-control" id="ticker" placeholder="NVDA" required style="text-transform: uppercase;">
+                            </div>
+                            <div class="col-md-6">
+                                <label>Strategy</label>
+                                <select class="form-control" id="strategy">
+                                    <option value="market">Market</option>
+                                    <option value="limit">Limit</option>
+                                    <option value="target">Target</option>
+                                    <option value="stop">Stop</option>
+                                    <option value="Multi" style="font-weight:bold; color:#28a745;">Multi (Pyramid)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row mb-4">
+                            <div class="col">
+                                <label>Shares</label>
+                                <input type="number" class="form-control" id="shares" placeholder="100" required>
+                            </div>
+                            <div class="col">
+                                <label>Entry Price</label>
+                                <input type="number" step="0.01" class="form-control" id="entry" placeholder="432.15" required>
+                            </div>
+                            <div class="col">
+                                <label>Stop Loss</label>
+                                <input type="number" step="0.01" class="form-control" id="stop" placeholder="428.00" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row mb-4">
+                            <div class="col-md-6">
+                                <label>Sell Order ID <small>(from DAS log)</small></label>
+                                <input type="text" class="form-control" id="sell_id" placeholder="950543235">
+                            </div>
+                            <div class="col-md-6">
+                                <label>Stop Order ID <small>(from DAS log)</small></label>
+                                <input type="text" class="form-control" id="stop_id" placeholder="950543236">
+                            </div>
+                        </div>
+
+                        <div id="multi-note" class="multi-note" style="display:none;">
+                            <strong>Multi Strategy Note:</strong><br>
+                            • First entry is manual.<br>
+                            • Bot will automatically pyramid up to 3 times on new highs + red candles.<br>
+                            • Each add-on uses 2× risk and dynamic shares.
+                        </div>
+
+                        <hr style="border-color: #444;">
+                        <p class="text-center mb-0">
+                            <small>
+                                <strong>Pro Tip:</strong> After placing the trade in DAS,<br>
+                                copy the two order IDs from your terminal log and paste them here.
+                            </small>
+                        </p>
+                    </form>
+                </div>
+                <div class="card-footer text-center py-4">
+                    <button class="btn btn-secondary mr-3" onclick="window.close()">Cancel</button>
+                    <button class="btn btn-success btn-lg px-5" onclick="submitTrade()">
+                        <strong>Add to Dashboard</strong>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function submitTrade() {
+    const payload = {
+        ticker      : document.getElementById('ticker').value.trim().toUpperCase(),
+        shares      : parseInt(document.getElementById('shares').value),
+        entry_price : parseFloat(document.getElementById('entry').value),
+        stop_loss   : parseFloat(document.getElementById('stop').value),
+        strategy    : document.getElementById('strategy').value,
+        sellOrderID : document.getElementById('sell_id').value.trim() || "MANUAL",
+        stopOrderID : document.getElementById('stop_id').value.trim() || "MANUAL"
+    };
+
+    if (!payload.ticker || !payload.shares || !payload.entry_price || !payload.stop_loss) {
+        alert('Please fill all required fields');
+        return;
+    }
+
+    if (payload.strategy === 'Multi' && payload.stop_loss <= payload.entry_price) {
+        alert('For Multi (short): Stop Loss must be ABOVE entry price');
+        return;
+    }
+
+    try {
+        const res = await fetch('/add_manual_trade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            alert(`Success! Trade added: ${payload.ticker}\nTradeID: ${data.tradeID}`);
+            window.close();
+        } else {
+            alert('Error: ' + (data.message || JSON.stringify(data)));
+        }
+    } catch (e) {
+        alert('Network error: ' + e.message);
+    }
+}
+
+// Show special note when Multi is selected
+document.getElementById('strategy').addEventListener('change', function() {
+    const note = document.getElementById('multi-note');
+    if (this.value === 'Multi') {
+        note.style.display = 'block';
+    } else {
+        note.style.display = 'none';
+    }
+});
+</script>
+</body>
+</html>

@@ -19,20 +19,17 @@ from dotenv import load_dotenv  # Added for .env
 import os
 
 class StrategyLogic:
-    def __init__(self, risk_management, socketio=None, signal_end=time(14, 0), trading_end=time(18, 0), strategy_mode='both'):
+    def __init__(self, risk_management, socketio=None, trading_end=time(16, 0), strategy_mode='both'):
         self.logger = logging.getLogger('StrategyLogic')
         self.logger.setLevel(logging.INFO)
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
         self.logger.debug("Initializing StrategyLogic")
         self.logger.debug(f"StrategyLogic logger handlers: {self.logger.handlers}")
         self.socketio = socketio or SocketIO()
         self.tickers = {}
-        self.bot_enabled = True
-
         
         self.risk_management = risk_management
         self.enabled_strategies = {
@@ -43,11 +40,8 @@ class StrategyLogic:
             '1Min-below_pmh',     
             # '5Min-below_pmh',     # <-- disabled
             '1Min-vwap_crossover',
-            '1Min-vwap_dev',
             # '5Min-vwap_crossover',# <-- disabled
-            
         }
-        self.signal_end  = signal_end
         self.trading_end = trading_end
         self.db_lock = threading.Lock()
         self.lock = threading.Lock()
@@ -135,7 +129,6 @@ class StrategyLogic:
                     state_sma TEXT,   -- Separate state for below SMA
                     state_below_pmh TEXT,  -- Separate state for below PMH
                     state_vwap_crossover TEXT,  -- Separate state for VWAP crossover
-                    state_vwap_dev TEXT,  -- Separate state for VWAP deviation
                     CONSTRAINT unique_candleconditions_1min_ticker_timestamp UNIQUE (ticker, timestamp)
                 );
                 CREATE INDEX IF NOT EXISTS idx_candleconditions_1min_ticker_timestamp
@@ -158,7 +151,6 @@ class StrategyLogic:
                     state_sma TEXT,   -- Separate state for below SMA
                     state_below_pmh TEXT,  -- Separate state for below PMH
                     state_vwap_crossover TEXT,  -- Separate state for VWAP crossover
-                    state_vwap_dev TEXT,
                     CONSTRAINT unique_candleconditions_5min_ticker_timestamp UNIQUE (ticker, timestamp)
                 );
                 CREATE INDEX IF NOT EXISTS idx_candleconditions_5min_ticker_timestamp
@@ -203,13 +195,7 @@ class StrategyLogic:
                 for row in rows:
                     ticker, rsi_1m, rsi_5m = row
                     if ticker not in current_tickers:
-                        risks = self.get_strategy_risks(ticker)
-                        self.logger.info(f"Fetched strategy_risks for {ticker}: {risks}")  # <-- ADD THIS
-                        selected = list(risks.keys())
-                        self.logger.info(f"Selected strategies for {ticker}: {selected}")  # <-- ADD THIS
-                        self.add_ticker(ticker, rsi_1m, rsi_5m, selected_strategies=selected)
-                    else:
-                        self.logger.info(f"Ticker {ticker} already in memory — skipping add")    
+                        self.add_ticker(ticker, rsi_1m, rsi_5m)
                 self.logger.debug(f"Fetched and processed {len(rows)} tickers from database")
                 return rows
             except psycopg2.Error as e:
@@ -350,82 +336,45 @@ class StrategyLogic:
             if conn:
                 self.db_pool.putconn(conn)
     
-    def get_strategy_risks(self, ticker):
-        """Fetch the strategy_risks JSON for a ticker from tradeparameters"""
-        conn = None
-        cursor = None
-        try:
-            conn = self.db_pool.getconn()
-            cursor = conn.cursor()
-            today = datetime.now().strftime('%Y-%m-%d')
-            cursor.execute("""
-                SELECT strategy_risks FROM tradeparameters
-                WHERE ticker = %s AND date = %s
-            """, (ticker.upper(), today))
-            row = cursor.fetchone()
-            return row[0] if row else {}
-        except psycopg2.Error as e:
-            self.logger.error(f"Error fetching strategy_risks for {ticker}: {e}")
-            return {}
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                self.db_pool.putconn(conn)
 
-    def add_ticker(self, ticker, rsi_1m, rsi_5m, selected_strategies=None):
-        self.logger.info(f"ENTERING add_ticker for {ticker} with selected_strategies={selected_strategies}")
+    def add_ticker(self, ticker, rsi_1m, rsi_5m, time=None):
         with self.lock:
-            # Clean up any existing threads/state for this ticker
-            self.remove_ticker(ticker)
-            self.logger.info(f"After remove_ticker, self.tickers keys: {list(self.tickers.keys())}")
-
-            # If no strategies provided, do nothing
-            if not selected_strategies:
-                self.logger.info(f"No strategies selected for {ticker} — no threads started")
+            if ticker in self.tickers:
+                self.logger.warning(f"Ticker {ticker} is already being processed.")
                 return
-
-            # Filter to only globally enabled strategies
-            valid_strategies = [s for s in selected_strategies if s in self.enabled_strategies]
-            
-            # Always store the ticker (for All Tickers and Candle Conditions display)
-            strategy_risks = self.get_strategy_risks(ticker)
+                
             self.tickers[ticker] = {
                 'rsi_1m': rsi_1m,
                 'rsi_5m': rsi_5m,
-                'strategy_risks': strategy_risks,
                 'was_above_sma': False
+                
             }
-            self.logger.info(f"Added ticker {ticker} with selected strategies: {selected_strategies} (valid: {valid_strategies}) and risks: {strategy_risks}")
-
-            if not valid_strategies:
-                self.logger.info(f"No globally enabled strategies for {ticker} — no threads started")
-                return
-
-
-            # Start threads for each valid selected strategy
-            for strategy in valid_strategies:
+            self.logger.info(f"Added ticker {ticker} with data: {self.tickers[ticker]}")
+            strategies = ['1Min-2g2r', '1Min-below_sma', '5Min-2g2r', '5Min-below_sma', '1Min-below_pmh', '5Min-below_pmh', '1Min-vwap_crossover', '5Min-vwap_crossover']
+            for strategy in strategies:
                 key = f"{ticker}_{strategy}"
-                ticker_thread = threading.Thread(target=self.run_ticker, args=(ticker, strategy), daemon=True)
-                self.ticker_threads[key] = ticker_thread
-                ticker_thread.start()
-                self.logger.info(f"Started thread for {ticker} with strategy {strategy}")
+                if key in self.ticker_threads and self.ticker_threads[key].is_alive():
+                    self.logger.warning(f"Ticker {ticker} with strategy {strategy} is already being processed.")
+                else:
+                    ticker_thread = threading.Thread(target=self.run_ticker, args=(ticker, strategy), daemon=True)
+                    self.ticker_threads[key] = ticker_thread
+                    ticker_thread.start()
+                    self.logger.info(f"Started thread for {ticker} with strategy {strategy}")
 
     def remove_ticker(self, ticker):
-        # No lock here — caller (add_ticker) already holds it
-        if ticker in self.tickers:
-            del self.tickers[ticker]
-            self.logger.info(f"Removed ticker {ticker} from self.tickers")
-        strategies = ['1Min-2g2r', '1Min-below_sma', '5Min-2g2r', '5Min-below_sma', '1Min-below_pmh', '5Min-below_pmh', '1Min-vwap_crossover', '5Min-vwap_crossover', '1Min-vwap_dev']
-        for strategy in strategies:
-            key = f"{ticker}_{strategy}"
-            if key in self.ticker_threads:
-                if self.ticker_threads[key].is_alive():
+        with self.lock:
+            if ticker in self.tickers:
+                del self.tickers[ticker]
+                self.logger.info(f"Removed ticker {ticker} from self.tickers")
+            strategies = ['1Min-2g2r', '1Min-below_sma', '5Min-2g2r', '5Min-below_sma', '1Min-below_pmh', '5Min-below_pmh', '1Min-vwap_crossover', '5Min-vwap_crossover']
+            for strategy in strategies:
+                key = f"{ticker}_{strategy}"
+                if key in self.ticker_threads and self.ticker_threads[key].is_alive():
                     self.logger.info(f"Stopping thread for {ticker} with strategy {strategy}")
-                del self.ticker_threads[key]
-            if key in self.last_processed:
-                del self.last_processed[key]
-                self.logger.debug(f"Removed {key} from last_processed")
+                    del self.ticker_threads[key]
+                if key in self.last_processed:
+                    del self.last_processed[key]
+                    self.logger.debug(f"Removed {key} from last_processed")
 
     def get_data_from_db(self, ticker, table_name, last_timestamp=None, delay=2):
         self.logger.info(f"Fetching data for {ticker} from {table_name}" + 
@@ -433,7 +382,7 @@ class StrategyLogic:
         
         # Wait until 9:30 AM EST if needed
         now = datetime.now()
-        target_time = now.replace(hour=7, minute=0, second=0, microsecond=0)
+        target_time = now.replace(hour=9, minute=30, second=0, microsecond=0)
         if now < target_time:
             wait_seconds = (target_time - now).total_seconds()
             self.logger.info(f"Waiting until 9:30 AM to start polling, {wait_seconds:.0f} seconds remaining")
@@ -620,13 +569,13 @@ class StrategyLogic:
             cursor = conn.cursor()
             today = datetime.now().strftime('%Y-%m-%d')
             query = """
-                SELECT pmh FROM tradeparameters
+                SELECT high FROM tradeparameters
                 WHERE ticker = %s AND date = %s
             """
             cursor.execute(query, (ticker.upper(), today))
             pmh = cursor.fetchone()
             if pmh:
-                return float(pmh[0])
+                return pmh[0]
             else:
                 self.logger.warning(f"No pmh value found for {ticker} in tradeparameters")
                 return None
@@ -657,8 +606,6 @@ class StrategyLogic:
             state_column = 'state_below_pmh'
         elif '-vwap_crossover' in strategy_type:
             state_column = 'state_vwap_crossover'
-        elif '-vwap_dev' in strategy_type:
-            state_column = 'state_vwap_dev'    
         self.logger.info(f"Processing {strategy_type} market data for {ticker}")
         vwap = self.get_vwap_from_trade_parameters(ticker)
         if vwap is None:
@@ -722,12 +669,9 @@ class StrategyLogic:
                 timestamp = row['timestamp']
                 
                 timestamp_db = timestamp.strftime('%Y-%m-%d %H:%M:%S')
-                open_price  = float(row['open'])  if row['open']  is not None and str(row['open'])  != 'nan' else None
-                close_price = float(row['close']) if row['close'] is not None and str(row['close']) != 'nan' else None
-                high_price  = float(row['high'])  if row.get('high') is not None and str(row.get('high', 'nan')) != 'nan' else None
-                if open_price is None or close_price is None:
-                    self.logger.warning(f"Skipping {ticker} at {timestamp}: open or close is NULL in DB")
-                    continue
+                open_price = float(row['open'])
+                high_price = float(row['high']) if 'high' in row else None
+                close_price = float(row['close'])
                 if high_price is None:
                     self.logger.warning(f"No high price for {ticker} at {timestamp}")
                     continue
@@ -736,7 +680,7 @@ class StrategyLogic:
                 
                 # Get previous states
                 cursor.execute(f"""
-                    SELECT state_2g2r, state_sma, state_below_pmh, state_vwap_crossover, state_vwap_dev FROM {table_name}
+                    SELECT state_2g2r, state_sma, state_below_pmh, state_vwap_crossover FROM {table_name}
                     WHERE ticker = %s AND timestamp < %s AND DATE(timestamp) = DATE(%s)
                     ORDER BY timestamp DESC LIMIT 1
                 """, (ticker, timestamp, timestamp))
@@ -745,7 +689,6 @@ class StrategyLogic:
                 prev_state_sma = prev_states[1] if prev_states else 'WAITING_FOR_SMA'
                 prev_state_below_pmh = prev_states[2] if prev_states else 'WAITING'
                 prev_state_vwap_crossover = prev_states[3] if prev_states else 'WAITING'
-                prev_state_vwap_dev = prev_states[4] if prev_states else 'WAITING'
 
                 self.logger.debug(f"Processing {ticker} at {timestamp}: prev_state_2g2r={prev_state_2g2r}, prev_state_sma={prev_state_sma}, is_green={is_green}, open={open_price}, close={close_price}, vwap={vwap}")
 
@@ -754,7 +697,6 @@ class StrategyLogic:
                 new_state_sma = None
                 new_state_below_pmh = None
                 new_state_vwap_crossover = None
-                new_state_vwap_dev = None
                 sma_10 = None
                 state = None  # Combined or primary state
 
@@ -828,32 +770,6 @@ class StrategyLogic:
                         
                 else:
                     new_state_vwap_crossover = 'MISSING_DATA'
-                    
-                    
-                if vwap is not None:
-                     
-                    
-                    if high_price >= vwap * 1.25:
-                        if prev_state_vwap_dev == 'SIGNAL_READY':
-                            new_state_vwap_dev = 'SIGNAL_FIRED'  # already signaled, suppress repeats
-                        else:
-                            new_state_vwap_dev = 'SIGNAL_READY'  # first time → fire!  
-                    elif high_price > vwap:
-                        new_state_vwap_dev = 'ABOVE_VWAP' 
-                    elif close_price < vwap:
-                        new_state_vwap_dev = 'BELOW_VWAP'    
-                    # Reset from SIGNAL_READY/SIGNAL_FIRED when price normalizes
-                    elif prev_state_vwap_dev in ['SIGNAL_READY', 'SIGNAL_FIRED']:
-                        if close_price >= vwap:
-                            new_state_vwap_dev = 'ABOVE_VWAP'
-                        else:
-                            new_state_vwap_dev = 'BELOW_VWAP'    
-                    else: 
-                        new_state_vwap_dev = prev_state_vwap_dev        
-                           
-                        
-                         
-                           
 
                 # Combined state for legacy 'state' column (e.g., for queries)
                 if self.strategy_mode == '2g2r':
@@ -866,8 +782,8 @@ class StrategyLogic:
                 # UPSERT to avoid race conditions
                 cursor.execute(f"""
                     INSERT INTO {table_name} (ticker, timestamp, open, high, close, vwap, is_green, sma_10, state,
-                                              state_2g2r, state_sma, state_below_pmh, state_vwap_crossover, state_vwap_dev)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                              state_2g2r, state_sma, state_below_pmh, state_vwap_crossover)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (ticker, timestamp) DO UPDATE SET
                         open = EXCLUDED.open,
                         high = EXCLUDED.high,
@@ -879,10 +795,9 @@ class StrategyLogic:
                         state_2g2r = EXCLUDED.state_2g2r,
                         state_sma = EXCLUDED.state_sma,
                         state_below_pmh = EXCLUDED.state_below_pmh,
-                        state_vwap_crossover = EXCLUDED.state_vwap_crossover,
-                        state_vwap_dev = EXCLUDED.state_vwap_dev
+                        state_vwap_crossover = EXCLUDED.state_vwap_crossover
                 """, (ticker, timestamp_db, open_price, high_price, close_price, vwap, is_green, sma_10, state,
-                      new_state_2g2r, new_state_sma, new_state_below_pmh, new_state_vwap_crossover, new_state_vwap_dev))
+                      new_state_2g2r, new_state_sma, new_state_below_pmh, new_state_vwap_crossover))
 
                 self.logger.info(f"Updated {ticker} at {timestamp}: is_green={is_green}, sma_10={sma_10}, state={state}, state_2g2r={new_state_2g2r}, state_sma={new_state_sma}, state_below_pmh={new_state_below_pmh}, state_vwap_crossover={new_state_vwap_crossover}")
 
@@ -892,7 +807,6 @@ class StrategyLogic:
             # <<< ADD THIS >>>
             if self.socketio:
                 self.socketio.emit('request_candle_conditions')  # triggers clients to refresh
-                self.logger.info("Emitted 'request_candle_conditions' to refresh Candle Conditions page")
             # <<< END >>>
         except psycopg2.Error as e:
             self.logger.error(f"Error updating {table_name} for {ticker}: {e}")
@@ -984,16 +898,19 @@ class StrategyLogic:
             conn = self.db_pool.getconn()
             cursor = conn.cursor()
             query = """
-                SELECT high, account_equity FROM tradeparameters
+                SELECT risk_1min, risk_5min, high, account_equity FROM tradeparameters
                 WHERE ticker = %s AND date = %s
             """
             cursor.execute(query, (ticker, date))
             row = cursor.fetchone()
             if row:
-                hod, account_equity = row
-                
+                risk_1min, risk_5min, hod, account_equity = row
+                if risk_1min is None or risk_5min is None:
+                    self.logger.debug(f"Missing risk_1min or risk_5min for {ticker} on {date}, skipping")
+                    return None
                 hod = float(hod)
-                
+                risk_1min = float(risk_1min) 
+                risk_5min = float(risk_5min) 
                 account_equity = float(account_equity) if account_equity is not None else 50000.0  # Default equity
         
             else:
@@ -1012,7 +929,7 @@ class StrategyLogic:
                 else:
                     self.logger.error(f"Could not find a valid account_equity before {date}")
                     return None
-            return {'hod': hod, 'account_equity': account_equity}
+            return {'risk_1min': risk_1min, 'risk_5min': risk_5min, 'hod': hod, 'account_equity': account_equity}
         except psycopg2.Error as e:
             self.logger.error(f"Error fetching risk parameters: {e}")
             return None
@@ -1102,19 +1019,8 @@ class StrategyLogic:
         table_name = 'candleconditions_1min' if strategy_type.startswith('1Min') else 'candleconditions_5min'
         try:
             signals = []
-            state_column = (
-                'state_2g2r' if strategy_type.endswith('2g2r') else
-                'state_sma' if strategy_type.endswith('below_sma') else
-                'state_below_pmh' if strategy_type.endswith('below_pmh') else
-                'state_vwap_crossover' if strategy_type.endswith('vwap_crossover') else
-                'state_vwap_dev' if strategy_type.endswith('vwap_dev') else
-                None
-                
-            )
+            state_column = 'state_2g2r' if strategy_type.endswith('2g2r') else 'state_sma' if strategy_type.endswith('below_sma') else 'state_below_pmh' if strategy_type.endswith('below_pmh') else 'state_vwap_crossover'
             
-            if state_column is None:
-                self.logger.error(f"Unknown strategy_type '{strategy_type}' — no state column defined")
-                return []
             max_age = self.max_signal_age_1min if strategy_type.startswith('1Min') else self.max_signal_age_5min
             recent_cutoff = datetime.now() - max_age
             
@@ -1123,7 +1029,7 @@ class StrategyLogic:
             try:
                 cursor = conn.cursor()
                 cursor.execute(f"""
-                    SELECT timestamp, open, high, close, vwap, state_2g2r, state_sma, state_below_pmh, state_vwap_crossover, state_vwap_dev,
+                    SELECT timestamp, open, high, close, vwap, state_2g2r, state_sma, state_below_pmh, state_vwap_crossover,
                            (SELECT MAX(high) FROM {table_name}
                            WHERE ticker = %s AND timestamp::date = CURRENT_DATE
                            AND timestamp >= %s  -- From 9:30
@@ -1132,19 +1038,15 @@ class StrategyLogic:
                     WHERE ticker = %s AND {state_column} = 'SIGNAL_READY'
                     AND timestamp >= %s  -- Recent only
                     AND timestamp::time BETWEEN %s AND %s
-                """, (ticker, datetime.combine(datetime.now().date(), time(9, 30)), ticker, recent_cutoff, time(9, 30), self.signal_end))
+                """, (ticker, datetime.combine(datetime.now().date(), time(9, 30)), ticker, recent_cutoff, time(9, 30), self.trading_end))
                 rows = cursor.fetchall()
                 if not rows:
                     self.logger.debug(f"No recent {state_column}='SIGNAL_READY' rows found for {ticker} within {max_age} after {recent_cutoff}")
                 for row in rows:
-                    timestamp, open_price, high_price, close_price, vwap, state_2g2r, state_sma, state_below_pmh, state_vwap_crossover, state_vwap_dev, hod = row
+                    timestamp, open_price, high_price, close_price, vwap, state_2g2r, state_sma, state_below_pmh, state_vwap_crossover, hod = row
                     signal_time = pd.to_datetime(timestamp).time()
-                    if not (time(9, 30) <= signal_time <= self.signal_end):
-                        self.logger.debug(f"Signal time {signal_time} for {ticker} outside trading hours (9:30-{self.signal_end})")
-                        continue
-                    # In fire_auto_signals, before signals.append(signal)
-                    if not self.bot_enabled:
-                        self.logger.info(f"Bot is disabled — skipping signal fire for {ticker} ({strategy_type})")
+                    if not (time(9, 30) <= signal_time <= self.trading_end):
+                        self.logger.debug(f"Signal time {signal_time} for {ticker} outside trading hours (9:30-{self.trading_end})")
                         continue
                     signal_row = pd.Series({
                         'timestamp': pd.to_datetime(timestamp),
@@ -1177,46 +1079,32 @@ class StrategyLogic:
         try:
             current_time = datetime.now()
             signal_time = row['timestamp']
-
             max_signal_age = self.max_signal_age_1min if strategy_type.startswith('1Min') else self.max_signal_age_5min
             if (current_time - signal_time) > max_signal_age:
                 self.logger.warning(f"Signal for {ticker} at {signal_time} is too old. Skipping.")
                 return None
-
-            # Log raw row data for debugging
-            self.logger.debug(f"Raw signal row for {ticker} {strategy_type}: {dict(row)}")
-
-            # Safely convert close price
+            # Log raw data for debugging
+            self.logger.debug(f"Raw data for {ticker}: close={row['close']}, type(close)={type(row['close'])}, high={row['high']}, type(high)={type(row['high'])}")
+            
+            # Convert price and high to float with try-except
             try:
                 price_current = float(row['close'])
-            except (KeyError, ValueError, TypeError) as e:
-                self.logger.error(f"Invalid or missing 'close' in row for {ticker}: {row.get('close')} | Error: {e}")
+            except (ValueError, TypeError) as e:
+                self.logger.error(f"Invalid 'close' value for {ticker}: {row['close']} (type: {type(row['close'])}). Error: {e}")
                 return None
 
-            # Safely convert high from candle (used for validation/logging)
             try:
                 high_current = float(row['high'])
-            except (KeyError, ValueError, TypeError) as e:
-                self.logger.error(f"Invalid or missing 'high' in row for {ticker}: {row.get('high')} | Error: {e}")
+            except (ValueError, TypeError) as e:
+                self.logger.error(f"Invalid 'high' value for {ticker}: {row['high']} (type: {type(row['high'])}). Error: {e}")
                 return None
-
-            # Use dynamic HOD from the query subselect — always reliable
-            try:
-                dynamic_hod = float(row['hod'])
-            except (KeyError, ValueError, TypeError) as e:
-                self.logger.error(f"Invalid or missing 'hod' (dynamic high) in row for {ticker}: {row.get('hod')} | Error: {e}")
-                return None
+            
+            
 
             date = datetime.now().strftime('%Y-%m-%d')
-
-            # Fetch risk parameters — only need account_equity now
-            try:
-                risk_params = self.get_risk_parameters(ticker, date)
-                if not risk_params:
-                    self.logger.warning(f"No risk parameters found for {ticker} on {date}")
-                    return None
-            except Exception as e:
-                self.logger.error(f"Exception fetching risk parameters for {ticker}: {e}")
+            risk_params = self.get_risk_parameters(ticker, date)
+            if not risk_params:
+                self.logger.warning(f"No valid risk parameters found for {ticker} on {date}, skipping signal generation")
                 return None
             
             # Retrieve hod from risk parameters
@@ -1227,166 +1115,201 @@ class StrategyLogic:
                 self.logger.error(f"Invalid 'hod' value for {ticker}: {risk_params['hod']} (type: {type(risk_params['hod'])}). Error: {e}")
                 return None
 
-            # Safely get account equity
+            # Log risk parameters for debugging
+            self.logger.debug(f"Risk params for {ticker}: risk_5min={risk_params.get('risk_5min')}, type(risk_5min)={type(risk_params.get('risk_5min'))}, account_equity={risk_params.get('account_equity')}, type(account_equity)={type(risk_params.get('account_equity'))}")
+
+            strategy_risk_map = {
+                '1Min-2g2r': 'risk_1min',
+                '1Min-below_sma': 'risk_1min',
+                '5Min-2g2r': 'risk_5min',
+                '5Min-below_sma': 'risk_5min',
+                '1Min-below_pmh': 'risk_1min',
+                '5Min-below_pmh': 'risk_5min',
+                '1Min-vwap_crossover': 'risk_1min',
+                '5Min-vwap_crossover': 'risk_5min'
+            }
+            risk_key = strategy_risk_map.get(strategy_type, None)
+            if not risk_key:
+                self.logger.error(f"Unsupported strategy type: {strategy_type}")
+                return None
+
+            # Convert risk parameters to float with try-except
             try:
-                account_equity_raw = risk_params.get('account_equity')
-                if account_equity_raw is None:
-                    account_equity = 50000.0
-                    self.logger.warning(f"account_equity missing for {ticker}, using default 50000.0")
-                else:
-                    account_equity = float(account_equity_raw)
+                account_equity = float(risk_params['account_equity'])
             except (ValueError, TypeError) as e:
-                self.logger.error(f"Failed to convert account_equity for {ticker}: {account_equity_raw} | Error: {e}")
+                self.logger.error(f"Invalid 'account_equity' for {ticker}: {risk_params['account_equity']} (type: {type(risk_params['account_equity'])}). Error: {e}")
                 return None
 
-            if account_equity <= 0:
-                self.logger.error(f"Invalid account equity (<=0) for {ticker}: {account_equity}")
-                return None
-
-            # Get per-strategy risk from JSON
             try:
-                strategy_risks = self.tickers.get(ticker, {}).get('strategy_risks', {})
-                if strategy_type not in strategy_risks:
-                    self.logger.info(f"No risk defined for strategy {strategy_type} on {ticker}")
-                    return None
-
-                risk_percentage_value = strategy_risks[strategy_type]
-                if risk_percentage_value is None or risk_percentage_value <= 0:
-                    self.logger.info(f"Invalid risk percentage for {ticker} {strategy_type}: {risk_percentage_value}")
-                    return None
-
-                risk_percentage = float(risk_percentage_value) / 100.0
-            except (ValueError, TypeError, KeyError) as e:
-                self.logger.error(f"Error processing strategy_risks for {ticker} {strategy_type}: {e}")
-                return None
-
-            # Calculate risk amount
-            try:
-                risk_amount = account_equity * risk_percentage
-                if risk_amount <= 0:
-                    self.logger.warning(f"Calculated risk_amount <= 0 for {ticker}: {risk_amount}")
-                    return None
-            except Exception as e:
-                self.logger.error(f"Error calculating risk_amount for {ticker}: {e}")
-                return None
-
-            # Determine stop loss
-            try:
-                if strategy_type.endswith('vwap_dev'):
-                    # Special rule: stop loss = current price * 1.2 (i.e., 20% below entry)
-                    stop_loss = round(price_current * 1.2, 2)
-                    self.logger.info(f"VWAP_DEV strategy: using wide stop loss = entry * 1.2 = {stop_loss}")
-                elif strategy_type.endswith('below_pmh') or strategy_type.endswith('vwap_crossover'):
-                    pmh = self.get_pmh_from_trade_parameters(ticker)
-                    if pmh is None:
-                        self.logger.error(f"Missing PMH for {ticker} in {strategy_type}")
-                        return None
-                    stop_loss = round(float(pmh), 2)
-                else:
-                    stop_loss = round(hod, 2)
+                risk_percentage = float(risk_params[risk_key]) / 100
             except (ValueError, TypeError) as e:
-                self.logger.error(f"Error converting stop loss value for {ticker}: {e}")
-                return None
-            except Exception as e:
-                self.logger.error(f"Unexpected error setting stop loss for {ticker}: {e}")
+                self.logger.error(f"Invalid '{risk_key}' for {ticker}: {risk_params[risk_key]} (type: {type(risk_params[risk_key])}). Error: {e}")
                 return None
 
-            # Validate stop loss vs entry
-            try:
-                price_difference = abs(stop_loss - price_current)
-                if price_difference == 0:
-                    self.logger.error(f"Stop loss equals entry price for {ticker}: SL={stop_loss}, Entry={price_current}")
+            risk_amount = account_equity * risk_percentage
+            if strategy_type.endswith('below_pmh') or strategy_type.endswith('vwap_crossover'):
+                pmh = self.get_pmh_from_trade_parameters(ticker)
+                if pmh is None:
+                    self.logger.error(f"Missing PMH for {ticker} in {strategy_type}. Cannot set stop loss.")
                     return None
-
-                risk_distance = stop_loss - price_current
-                if risk_distance <= 0:
-                    self.logger.error(f"Invalid risk distance (<=0) for {ticker}: {risk_distance}")
-                    return None
-            except Exception as e:
-                self.logger.error(f"Error in stop loss validation for {ticker}: {e}")
+                stop_loss = round(float(pmh), 2)
+            else:
+                stop_loss = round(hod, 2) if hod is not None else round(price_current * 1.20, 2)
+                #last_swing_high = self.find_last_swing_high(ticker, row['timestamp'])
+                #if last_swing_high is not None:
+                    #stop_loss = round(last_swing_high, 2)
+                #else:
+                    #stop_loss = round(hod, 2) if hod is not None else round(price_current * 1.20, 2)
+            price_difference = abs(stop_loss - price_current)
+            if price_difference == 0:
+                self.logger.error(f"Stop loss equals current price for {ticker}. Cannot calculate shares.")
                 return None
-
-            # Calculate shares
-            try:
-                shares = int(risk_amount / max(price_difference, 0.01))
-                if shares <= 0:
-                    self.logger.warning(f"Calculated shares <= 0 for {ticker}, skipping signal")
-                    return None
-            except Exception as e:
-                self.logger.error(f"Error calculating shares for {ticker}: {e}")
+            
+            risk_distance = stop_loss - price_current
+            if risk_distance <= 0:
+                self.logger.error(f"Invalid risk for {ticker}")
                 return None
+                
+            risk = risk_distance  # ← Defined early and safely
+            
+            # === START OF EV/RR FILTER BLOCK (ONLY FOR BELOW SMA STRATEGIES) ===
 
-            # Calculate target price
-            try:
-                risk_per_share = stop_loss - price_current
-                target_price = price_current - (2 * risk_per_share)
-            except Exception as e:
-                self.logger.error(f"Error calculating target price for {ticker}: {e}")
-                return None
+            if 'below_sma' not in strategy_type:
+                # Non-below_sma: no filter, default 2R target
+                target_price = price_current - (2 * risk)
+                self.logger.debug(f"{ticker} {strategy_type}: EV filter SKIPPED (not below_sma) — using default 2R target")
+            else:
+                # === BELOW SMA: Full EV/RR Filter with Detailed Logging ===
+                vwap = row['vwap']
+                open_price_today = self.get_open_from_trade_parameters(ticker)
+                pml = self.get_pml_from_ohlc(ticker)
 
-            # Generate trade ID
-            try:
-                trade_id = self.generate_auto_id()
-            except Exception as e:
-                self.logger.error(f"Failed to generate trade ID for {ticker}: {e}")
-                return None
+                self.logger.info(
+                    f"{ticker} {strategy_type} EV filter START: "
+                    f"entry={price_current:.2f}, stop={stop_loss:.2f}, risk_distance={risk_distance:.2f}, "
+                    f"VWAP={vwap:.2f}, open={open_price_today}, PML={pml}"
+                )
 
-            # Strategy mode permission check
-            try:
-                if strategy_type.endswith('2g2r') and self.strategy_mode not in ['both', '2g2r']:
-                    self.logger.info(f"Strategy {strategy_type} disabled by mode {self.strategy_mode}")
-                    return None
-                if strategy_type.endswith('below_sma') and self.strategy_mode not in ['both', 'below_sma']:
-                    self.logger.info(f"Strategy {strategy_type} disabled by mode {self.strategy_mode}")
-                    return None
-            except Exception as e:
-                self.logger.error(f"Error in strategy_mode check: {e}")
-                return None
+                projected_reward = None
+                target_used = None
+                min_rr_threshold = 1.5
+                historical_win_rate = 0.6429
 
-            # Check for active trade
-            try:
-                active_trade_status = self.check_active_trade_status(ticker, strategy_type)
-                if active_trade_status in ["open", "pending"]:
-                    self.logger.info(f"Skipping signal for {ticker} ({strategy_type}) — active trade: {active_trade_status}")
-                    return None
-            except Exception as e:
-                self.logger.error(f"Error checking active trade status for {ticker}: {e}")
-                return None
-
-            # Build final signal dictionary
-            try:
-                signal = {
-                    'tradeID': trade_id,
-                    'strategy': strategy_type,
-                    'ticker': ticker,
-                    'entry_price': round(price_current, 2),
-                    's_loss': round(stop_loss, 2),
-                    'time': row['timestamp'],
-                    'hod': round(hod, 2),
-                    'shares': shares,
-                    'target_price': round(target_price, 2),
-                    'risk': round(risk_amount, 2),
-                    'status': 'Fired',
-                }
-            except Exception as e:
-                self.logger.error(f"Error building signal dict for {ticker}: {e}")
-                return None
-
-            # Insert signal and notify
-            try:
-                if self.insert_trade_signal(signal):
-                    self.logger.info(f"Signal successfully fired and saved: {signal}")
-                    self.risk_management.receive_signal(signal)
-                    return signal
+                # 1. Try VWAP
+                if price_current > vwap:
+                    candidate_reward = price_current - vwap
+                    candidate_rr = candidate_reward / risk_distance
+                    self.logger.info(f"   -> VWAP check: reward={candidate_reward:.2f}, RR={candidate_rr:.2f}")
+                    if candidate_rr >= min_rr_threshold:
+                        projected_reward = candidate_reward
+                        target_used = "VWAP"
+                        self.logger.info(f"   -> VWAP ACCEPTED (RR ≥ {min_rr_threshold})")
+                    else:
+                        self.logger.info(f"   -> VWAP rejected (RR {candidate_rr:.2f} < {min_rr_threshold})")
                 else:
-                    self.logger.error(f"Failed to insert signal into DB: {signal}")
+                    self.logger.info(f"   -> VWAP skipped (entry {price_current:.2f} ≤ VWAP {vwap:.2f})")
+
+                # 2. Fallback to open price
+                if projected_reward is None:
+                    if open_price_today is not None and price_current > open_price_today:
+                        candidate_reward = price_current - open_price_today
+                        candidate_rr = candidate_reward / risk_distance
+                        self.logger.info(f"   -> Open price check: reward={candidate_reward:.2f}, RR={candidate_rr:.2f}")
+                        if candidate_rr >= min_rr_threshold:
+                            projected_reward = candidate_reward
+                            target_used = "Open Price"
+                            self.logger.info(f"   -> Open Price ACCEPTED")
+                        else:
+                            self.logger.info(f"   -> Open Price rejected (RR {candidate_rr:.2f} < {min_rr_threshold})")
+                    else:
+                        reason = "None" if open_price_today is None else f"entry ≤ open ({price_current:.2f} ≤ {open_price_today:.2f})"
+                        self.logger.info(f"   -> Open Price skipped ({reason})")
+
+                # 3. Final fallback to PML
+                if projected_reward is None:
+                    if pml is not None and price_current > pml:
+                        candidate_reward = price_current - pml
+                        candidate_rr = candidate_reward / risk_distance
+                        self.logger.info(f"   -> PML check: reward={candidate_reward:.2f}, RR={candidate_rr:.2f}")
+                        if candidate_rr >= min_rr_threshold:
+                            projected_reward = candidate_reward
+                            target_used = "PML"
+                            self.logger.info(f"   -> PML ACCEPTED")
+                        else:
+                            self.logger.info(f"   -> PML rejected (RR {candidate_rr:.2f} < {min_rr_threshold})")
+                    else:
+                        reason = "None" if pml is None else f"entry ≤ PML ({price_current:.2f} ≤ {pml:.2f})"
+                        self.logger.info(f"   -> PML skipped ({reason})")
+
+                # Final decision
+                if projected_reward is None or projected_reward <= 0:
+                    self.logger.warning(
+                        f"EV FILTER BLOCKED {ticker} {strategy_type}: "
+                        f"No valid target met RR ≥ {min_rr_threshold} — signal skipped"
+                    )
                     return None
-            except Exception as e:
-                self.logger.error(f"Exception during signal insertion for {ticker}: {e}")
+
+                # Passed!
+                projected_rr = projected_reward / risk_distance
+                projected_ev = (historical_win_rate * projected_rr) - (1 - historical_win_rate)
+                self.logger.info(
+                    f"EV FILTER PASSED {ticker} {strategy_type}: "
+                    f"Target={target_used} (reward={projected_reward:.2f}), "
+                    f"RR={projected_rr:.2f}:1, EV={projected_ev:.2f}R -> signal will fire"
+                )
+
+                # Set final target
+                if target_used == "VWAP":
+                    target_price = vwap
+                elif target_used == "Open Price":
+                    target_price = open_price_today
+                elif target_used == "PML":
+                    target_price = pml
+                else:
+                    target_price = price_current - (risk_distance * 2)
+
+            # === END OF EV/RR FILTER BLOCK ===
+
+            shares = int(risk_amount / max(price_difference, 0.01))
+            risk = stop_loss - price_current
+            if risk <= 0:
+                self.logger.error(f"Invalid risk (<=0) for {ticker}: stop_loss={stop_loss}, price_current={price_current}. Skipping signal.")
+                return None
+            target_price = price_current - (2 * risk)
+            trade_id = self.generate_auto_id()
+            
+            # Verify strategy_mode permits this signal
+            if strategy_type.endswith('2g2r') and self.strategy_mode not in ['both', '2g2r']:
+                return None
+            if strategy_type.endswith('below_sma') and self.strategy_mode not in ['both', 'below_sma']:
                 return None
 
+            active_trade_status = self.check_active_trade_status(ticker, strategy_type)
+            if active_trade_status in ["open", "pending"]:
+                self.logger.info(f"Skipping signal for {ticker} ({strategy_type}) due to active trade status: {active_trade_status}")
+                return None
+
+            signal = {
+                'tradeID': trade_id,
+                'strategy': strategy_type,
+                'ticker': ticker,
+                'entry_price': round(price_current, 2),
+                's_loss': round(stop_loss, 2),
+                'time': row['timestamp'],
+                'hod': round(hod, 2),
+                'shares': shares,
+                'target_price': round(target_price, 2),
+                'risk': round(risk_amount, 2),
+                'status': 'Fired',
+            }
+            if self.insert_trade_signal(signal):
+                self.logger.info(f"Signal fired and inserted into DB: {signal}")
+                self.risk_management.receive_signal(signal)
+            else:
+                self.logger.error(f"Failed to insert signal into DB: {signal}")
+            return signal
         except Exception as e:
-            self.logger.error(f"Unexpected error in generate_signal for {ticker} {strategy_type}: {e}", exc_info=True)
+            self.logger.error(f"Error generating signal for {ticker}: {e}")
             return None
     
 

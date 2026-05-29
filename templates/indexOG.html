@@ -21,6 +21,21 @@
         #live-trading-table input#time {
             min-width: 140px; /* Wider for date-time */
         }
+        .subtable-row { display: none; } /* Hide subtable by default */
+        .ticker-clickable { cursor: pointer; text-decoration: underline; } /* Style for clickable ticker */
+        .located-shares-subtable { margin: 10px; } /* Style for subtable */
+        /* New styles for subtable */
+        .located-shares-subtable td, .located-shares-subtable th {
+            height: 38px; /* Matches default Bootstrap table row height in #live-trading-table */
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        .located-shares-subtable td:nth-child(3), .located-shares-subtable th:nth-child(3) { /* Price/Sh */
+            width: 150px; /* Matches original Notes width */
+        }
+        .located-shares-subtable td:nth-child(6), .located-shares-subtable th:nth-child(6) { /* Notes */
+            width: 90px; /* Matches original Price per Share width */
+        }
     </style>
 </head>
 <body>
@@ -831,76 +846,214 @@
                     const allTickersTableBody = $('#all-ticker-monitor-table tbody');
                     const liveTradingTableBody = $('#live-trading-table tbody');
 
-                    // Create a set of existing tickers to avoid duplicates
-                    const existingTickers = new Set(
-                        allTickersTableBody.find('tr').map((i, row) => $(row).find('td:first').text()).get()
-                    );
+                    
+
+                    // Clear existing rows to rebuild in order
+                    
+                    allTickersTableBody.empty();
+
 
                     // Append only new tickers
                     tickers.forEach(ticker => {
+                        
+                        const tickerUpper = ticker.ticker.toUpperCase();
+                        allTickersTableBody.append(`
+                            <tr>
+                                <td>${ticker.ticker}</td>
+                                <td>${ticker.date} ${ticker.time}</td>
+                                <td>${ticker.risk_1m || ''}</td>
+                                <td>${ticker.risk_5m || ''}</td>
+                                <td>${ticker.rsi_1m || ''}</td>
+                                <td>${ticker.rsi_5m || ''}</td>
+                                <td><button class="btn btn-danger cancel-ticker" data-ticker="${ticker.ticker}">Cancel</button></td>
+                            </tr>
+                        `);
+                     });
+
+                    // Create a set of existing tickers in Live Trading table
+                    const existingTickers = new Set(
+                        liveTradingTableBody.find('tr.main-row').map((i, row) => $(row).find('td:first-child').text()).toArray()
+                    );    
+                    
+                    // Append only new tickers to Live Trading table
+                    tickers.forEach(ticker => {
+                        const tickerUpper = ticker.ticker.toUpperCase();
+                        
                         if (!existingTickers.has(ticker.ticker)) {
-                            const tickerUpper = ticker.ticker.toUpperCase();
-                            allTickersTableBody.append(`
-                                <tr>
-                                    <td>${ticker.ticker}</td>
-                                    <td>${ticker.date} ${ticker.time}</td>
-                                    <td>${ticker.risk_1m || ''}</td>
-                                    <td>${ticker.risk_5m || ''}</td>
-                                    <td>${ticker.rsi_1m || ''}</td>
-                                    <td>${ticker.rsi_5m || ''}</td>
-                                    <td><button class="btn btn-danger cancel-monitor" data-ticker="${ticker.ticker}">Cancel</button></td>
-                                </tr>
-                            `);
                             liveTradingTableBody.append(`
-                                <tr>
-                                    <td>${ticker.ticker}</td>
+                                <tr class="main-row" id="live-row-${tickerUpper}">
+                                    <td class="ticker-clickable" data-ticker="${tickerUpper}">${ticker.ticker}</td>
                                     <td><input type="number" step="0.01" id="risk-${tickerUpper}" class="form-control" style="width: 90px;" value="100"></td>
                                     <td><input type="text" id="last-price-${tickerUpper}" class="form-control" style="width: 90px;" readonly></td>
                                     <td><input type="number" id="shares-${tickerUpper}" class="form-control" style="width: 90px;"></td>
-                                    <td><input type="number" step="0.01" id="target-${tickerUpper}" class="form-control" style="width: 90px;"></td>
-                                    <td><input type="number" id="sl-${tickerUpper}" class="form-control" style="width: 90px;"></td>
-                                    <td><input type="text" id="sl-percent-${tickerUpper}" class="form-control" style="width: 90px;" readonly></td>
-                                    <td><input type="number" id="hod-${tickerUpper}" class="form-control" style="width: 90px;" readonly></td>
+                                    <td><input type="number" step="0.01" id="target-${tickerUpper}" class="form-control"></td>
+                                    <td><input type="number" id="sl-${tickerUpper}" class="form-control"></td>
+                                    <td><input type="text" id="sl-percent-${tickerUpper}" class="form-control" readonly></td>
+                                    <td><input type="number" id="hod-${tickerUpper}" class="form-control" readonly></td>
                                     <td><input type="text" id="time-${tickerUpper}" class="form-control" style="width: 140px;" readonly></td>
                                     <td>
-                                        <select id="strategy-${tickerUpper}" class="form-control" style="width: 100px;">
-                                            <option value="market">market</option>
-                                            <option value="limit">limit</option>
-                                            <option value="target">target</option>
+                                        <select id="strategy-${tickerUpper}" class="form-control">
+                                            <option value="market">Market</option>
+                                            <option value="limit">Limit</option>
+                                            <option value="target">Target</option>
                                         </select>
                                     </td>
                                     <td>
-                                        <button class="btn btn-info" onclick="updateRow('${tickerUpper}')">Update</button>
-                                        <button class="btn btn-success" onclick="sendOrder('${tickerUpper}')">Send</button>
+                                        <button class="btn btn-info update-btn" onclick="updateRow('${tickerUpper}')">Update</button>
+                                        <button class="btn btn-success send-btn" onclick="sendOrder('${tickerUpper}')">Send</button>
+                                    </td>
+                                </tr>
+                                <tr class="subtable-row" id="subtable-${tickerUpper}">
+                                    <td colspan="11">
+                                        <table class="table table-bordered located-shares-subtable" id="located-shares-${tickerUpper}">
+                                            <thead>
+                                                <tr>
+                                                    <th>Ticker</th>
+                                                    <th>Shares</th>
+                                                    <th>Price/Sh</th>
+                                                    <th>Total Price</th>
+                                                    <th>Route</th>
+                                                    <th>Notes</th>
+                                                    <th>Borrowed</th>
+                                                    <th>Available</th>
+                                                    <th>Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td>${ticker.ticker}</td>
+                                                    <td id="subtable-shares-${tickerUpper}"></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td class="borrowed"></td>
+                                                    <td class="available"></td>
+                                                    <td>
+                                                        <button class="btn btn-primary locate-btn" data-ticker="${tickerUpper}">Locate</button>
+                                                        <button class="btn btn-success accept-btn" data-ticker="${tickerUpper}" disabled>Accept</button>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
                                     </td>
                                 </tr>
                             `);
+                            fetchBorrowedShares(tickerUpper);
+                            syncSubtableShares(tickerUpper);
+                            // Add to existingTickers to prevent duplicates in this run
+                            existingTickers.add(ticker.ticker);
                         }
                     });
 
                     // Remove tickers that are no longer in the data
-                    allTickersTableBody.find('tr').each(function() {
-                        const ticker = $(this).find('td:first').text();
+                    liveTradingTableBody.find('tr.main-row').each(function() {
+                        const ticker = $(this).find('td:first-child').text();
                         if (!tickers.some(t => t.ticker === ticker)) {
                             $(this).remove();
+                            $(`#subtable-${ticker}`).remove();
                         }
                     });
-                    liveTradingTableBody.find('tr').each(function() {
-                        const ticker = $(this).find('td:first').text();
-                        if (!tickers.some(t => t.ticker === ticker)) {
-                            $(this).remove();
+                    
+                });
+            }
+
+            // Toggle subtable on ticker click
+            $(document).on('click', '.ticker-clickable', function() {
+                const ticker = $(this).data('ticker');
+                $(`#subtable-${ticker}`).toggle();
+                syncSubtableShares(ticker);
+            });
+
+            // Sync subtable shares with main row
+            function syncSubtableShares(ticker) {
+                const shares = $(`#shares-${ticker}`).val() || '';
+                $(`#subtable-shares-${ticker}`).text(shares);
+                const locateBtn = $(`#located-shares-${ticker} .locate-btn`);
+                locateBtn.data('shares', shares);
+                locateBtn.prop('disabled', !shares || shares <= 0);
+            }
+
+            // Update shares in subtable when main row changes
+            $(document).on('input', '[id^="shares-"]', function() {
+                const ticker = this.id.split('-')[1];
+                syncSubtableShares(ticker);
+            });
+
+            // Locate button
+            $(document).on('click', '.locate-btn', function() {
+                const ticker = $(this).data('ticker');
+                const shares = $(this).data('shares');
+                if (!shares || shares <= 0) {
+                    alert('Please enter valid shares in the Live Trading table.');
+                    return;
+                }
+                $.ajax({
+                    url: 'http://localhost:5010/locate_shares',
+                    type: 'POST',
+                    data: { 'tickers[]': ticker, 'shares[]': shares },
+                    success: function(data) {
+                        console.log('Locate shares response:', data);
+                        if (data.located_shares && data.located_shares[0]) {
+                            updateLocatedShares(ticker, data.located_shares[0]);
+                        } else {
+                            alert('No shares located.');
                         }
-                    });
+                    },
+                    error: function(jqXHR, textStatus) {
+                        alert('Error locating shares: ' + textStatus);
+                    }
+                });
+            });
+
+            // Accept button
+            $(document).on('click', '.accept-btn', function() {
+                const ticker = $(this).data('ticker');
+                $.post('http://localhost:5010/accept_offer', { ticker: ticker }, function(data) {
+                    if (data.status === 'success') {
+                        alert(`Accepted offer for ${ticker}`);
+                        fetchBorrowedShares(ticker);
+                    } else {
+                        alert('Failed to accept offer: ' + data.message);
+                    }
+                }).fail(() => alert(`Failed to accept offer for ${ticker}`));
+            });
+
+            // Update located shares subtable
+            function updateLocatedShares(ticker, share) {
+                const row = $(`#located-shares-${ticker} tbody tr`);
+                const shares = parseInt($(`#subtable-shares-${ticker}`).text()) || parseInt(share.shares) || 0;
+                const price = parseFloat(share.price) || 0;
+                const totalCost = (price * shares).toFixed(4); // Calculate total cost
+                row.find('td:eq(2)').text(price.toFixed(4));
+                row.find('td:eq(3)').text(totalCost);
+                row.find('td:eq(4)').text(share.route);
+                row.find('td:eq(5)').text(share.note || '');
+                row.find('.accept-btn').prop('disabled', !share.price && !share.note.includes('shortable'));
+            }
+
+            // Fetch borrowed and available shares
+            function fetchBorrowedShares(ticker) {
+                $.get('http://localhost:5010/get_borrowed_shares', function(data) {
+                    console.log('Borrowed shares response:', data);
+                    const share = data.borrowed_shares.find(s => s.ticker === ticker) || { borrowed_shares: 0, available_shares: 0 };
+                    const row = $(`#located-shares-${ticker} tbody tr`);
+                    row.find('.borrowed').text(share.borrowed_shares);
+                    row.find('.available').text(share.available_shares);
+                }).fail(() => {
+                    $(`#located-shares-${ticker} .borrowed`).text('0');
+                    $(`#located-shares-${ticker} .available`).text('0');
                 });
             }
 
             // Delegated event listener for cancel-monitor buttons
-            $(document).on('click', '.cancel-monitor', function() {
+            $(document).on('click', '.cancel-ticker', function() {
                 var ticker = $(this).data('ticker');
                 $.post('/remove_ticker', { ticker: ticker }, function(data) {
                     if (data.status === 'success') {
                         loadTickers();
                         socket.emit('ticker_removed', { ticker: ticker });
+                        console.log(`Cancelled ticker ${ticker}`);
                     } else {
                         alert('Failed to remove ticker');
                     }
@@ -921,6 +1074,7 @@
                             $(`#target-${ticker}`).val(data.target ? data.target.toFixed(2) : '');
                             $(`#sl-${ticker}`).val(data.stop_loss.toFixed(2));
                             calculateSharesAndSLPercent(ticker, data.last_price, data.stop_loss);
+                            syncSubtableShares(ticker);
                         } else {
                             alert('Error: ' + data.error);
                         }
@@ -941,9 +1095,11 @@
                     $(`#shares-${ticker}`).val(shares);
                     const slPercent = Math.round(((stopLoss - lastPrice) / lastPrice) * 100);
                     $(`#sl-percent-${ticker}`).val(slPercent + '%');
+                    syncSubtableShares(ticker);
                 } else {
                     $(`#shares-${ticker}`).val('');
                     $(`#sl-percent-${ticker}`).val('');
+                    syncSubtableShares(ticker);
                 }
             }
 
@@ -1247,7 +1403,7 @@
                                 <td>${trade.RR ? trade.RR.toFixed(2) : ''}</td>
                                 <td>${trade.reason}</td>
                                 <td>${parseFloat(trade.realized).toFixed(2)}</td>
-                            </tr>
+                        </tr>
                         `);
                     });
                 });
@@ -1343,6 +1499,9 @@
                         if (data.status === 'success') {
                             loadTickers();
                             $('#trading-form')[0].reset();
+                            // Emit socket event to notify all clients
+                            socket.emit('ticker_added', { tickers: formData.getAll('tickers[]') });
+                            
                         } else {
                             alert('Error adding ticker: ' + data.error);
                         }
@@ -1388,10 +1547,7 @@
             loadClosedTrades();
             loadTradeSummary();
             updateStatus();
-            // Reduced polling
             setInterval(updateStatus, 60000);
-            // Removed polling for trade signals to rely on SocketIO
-            // setInterval(loadTradeSignals, 60000);
         });
     </script>
 </body>

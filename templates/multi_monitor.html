@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Multi Pyramid Monitor</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body { background: #f8f9fa; padding: 20px; }
+        .multi-card {
+            margin-bottom: 20px;
+            border-left: 6px solid #6f42c1;
+        }
+        .btn-cancel {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-cancel:hover {
+            background-color: #c82333;
+        }
+        .badge-cutoff {
+            background-color: #dc3545;
+            color: white;
+            font-size: 0.75rem;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+        .badge-active {
+            background-color: #28a745;
+            color: white;
+            font-size: 0.75rem;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Multi Pyramid Monitor</h1>
+        <div id="multi-container" class="row"></div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        function loadMultiStatus() {
+            socket.emit('request_multi_status');
+        }
+
+        socket.on('multi_status_update', function(data) {
+            const container = $('#multi-container');
+            container.empty();
+
+            if (Object.keys(data).length === 0) {
+                container.append('<div class="col-12 text-center text-muted">No active Multi pyramids running.</div>');
+                return;
+            }
+
+            Object.keys(data).forEach(ticker => {
+                const m = data[ticker];
+                let attempts = '';
+                for (let i = 1; i <= m.add_count; i++) {
+                    attempts += `<div class="alert alert-success py-1 mb-1">Add-on ${i} placed</div>`;
+                }
+
+                const cutoffBadge = m.cutoff
+                    ? `<span class="badge-cutoff ml-2">CUTOFF</span>`
+                    : `<span class="badge-active ml-2">ACTIVE</span>`;
+
+                const statusText = m.cutoff
+                    ? `<span class="text-danger font-weight-bold">Past ${m.cutoff_time} — no more add-ons</span>`
+                    : m.broken
+                        ? '<span class="text-success">Breakout detected — waiting for red candle</span>'
+                        : '<span class="text-warning">Waiting for breakout</span>';
+
+                const html = `
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card multi-card">
+                            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                <strong>${ticker}</strong>
+                                <div class="d-flex align-items-center">
+                                    <span class="mr-2">${m.add_count}/3 Add-ons</span>
+                                    ${cutoffBadge}
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <p class="mb-1"><strong>Current Stop:</strong> $${parseFloat(m.current_stop).toFixed(2)}</p>
+                                <p class="mb-1"><strong>Original Risk:</strong> $${parseFloat(m.original_risk).toFixed(2)}</p>
+                                <p class="mb-1"><strong>Last Add-on:</strong> ${m.last_trigger || '—'}</p>
+                                <p class="mb-2"><strong>Status:</strong> ${statusText}</p>
+                                ${attempts || '<p class="text-muted mb-0">No add-ons placed yet</p>'}
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-cancel btn-sm btn-block"
+                                        onclick="cancelPyramid('${ticker}')">
+                                    Cancel Pyramid for ${ticker}
+                                </button>
+                            </div>
+                        </div>
+                    </div>`;
+                container.append(html);
+            });
+        });
+
+        window.cancelPyramid = function(ticker) {
+            if (!confirm(`Cancel Multi Pyramid for ${ticker}?\nThis will stop all future add-ons.`)) return;
+
+            $.ajax({
+                url: '/cancel_multi_pyramid',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ticker: ticker}),
+                success: function() {
+                    alert(`Multi Pyramid cancelled for ${ticker}`);
+                    loadMultiStatus();
+                },
+                error: function() {
+                    alert('Failed to cancel pyramid');
+                }
+            });
+        };
+
+        $(document).ready(function() {
+            loadMultiStatus();
+            setInterval(loadMultiStatus, 4000);
+        });
+    </script>
+</body>
+</html>

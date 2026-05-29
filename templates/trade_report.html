@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Trade Reports</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        form {
+            margin-bottom: 20px;
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px;
+        }
+        #results {
+            display: none;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .trade-card {
+            border: 1px solid #ccc;
+            margin: 10px 0;
+            padding: 10px;
+        }
+        .note {
+            font-size: 0.9em;
+            color: #555;
+            margin-bottom: 10px;
+        }
+        .chart-container {
+            width: 100%;
+            height: 600px; /* Enlarged chart height */
+            margin-top: 10px;
+            position: relative;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+        .error {
+            color: red;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>Search Trade Reports</h1>
+    <p class="note">Enter a ticker, trade ID, or date range to view trades. Ticker-only searches show all trades for that ticker across all dates.</p>
+    <form id="search-form">
+        <input type="text" id="tradeid-input" placeholder="Trade ID (optional, e.g., astc:1)" />
+        <input type="text" id="ticker-input" placeholder="Ticker (optional, e.g., ASTC)" />
+        <input type="date" id="start-date-input" />
+        <input type="date" id="end-date-input" />
+        <button type="button" onclick="searchReports()">Search</button>
+    </form>
+    <div id="results">
+        <h3>Results</h3>
+        <div id="reports-container"></div>
+    </div>
+
+    <script>
+        function renderChart(report, containerId, ohlc) {
+            const tradeDate = report.signal.time.split(' ')[0];
+            const executions = report.executions;
+            const container = document.getElementById(containerId);
+
+            if (!ohlc || ohlc.length === 0) {
+                container.innerHTML = `<div class="error">No OHLC data available for ${report.signal.ticker} on ${tradeDate}</div>`;
+                return;
+            }
+
+            container.innerHTML = '<div class="loading">Loading chart...</div>';
+
+            // Parse timestamps to date objects for proper time scaling
+            const timestamps = ohlc.map(d => {
+                const [datePart, timePart] = d.time.split('-');
+                const [year, month, day] = datePart.split('/');
+                return new Date(`${year}-${month}-${day}T${timePart}:00`);
+            });
+
+            const candlestick = {
+                x: timestamps,
+                open: ohlc.map(d => d.open),
+                high: ohlc.map(d => d.high),
+                low: ohlc.map(d => d.low),
+                close: ohlc.map(d => d.close),
+                type: 'candlestick',
+                name: 'OHLC',
+                increasing: { line: { color: 'green' } },
+                decreasing: { line: { color: 'red' } }
+            };
+
+            const executionTraces = executions.map(exec => {
+                let execTime = exec.time || exec.executed_time;
+                if (execTime && execTime.includes(' ')) {
+                    execTime = new Date(execTime);
+                } else {
+                    // Fallback if format is unexpected
+                    const [year, month, day] = tradeDate.split('-');
+                    const [hour, minute] = execTime.split(':');
+                    execTime = new Date(`${year}-${month}-${day}T${hour}:${minute}:00`);
+                }
+                const execPrice = exec.price || exec.stop_loss;
+                const table = (exec.table || '').toLowerCase();
+                const action = exec.action || exec.table;
+                console.log(`Execution: ${action}, Time: ${execTime.toISOString()}, Price: ${execPrice}`); // Debug log
+
+                let label = '';
+                let color = '';
+                let size = 18;
+                if (table === 'sellmarket') {
+                    label = 'S shrt';
+                    color = 'red';
+                }    
+                else if (table === 'buymarket') {
+                    label = 'B close';
+                    color = 'green';
+                }
+                else if (table === 'stopmarket') {
+                    label = 'S loss';
+                    color = 'green';
+                }
+                else if (table === 'canceledstop') {
+                    label = 'C stop';
+                    color = 'black';
+                }
+                else if (table === 'executedstop') {
+                    label = 'Exec stop';
+                    color = 'red';
+                }
+
+                //if (action === 'Sell-Short' || action === 'SS Ply') {
+                    //color = 'red';
+                //} else if (action === 'Buy' || action === 'Buy-Close') {
+                    //color = 'green';
+                //} else if (action === 'Stop Loss') {
+                    //color = 'yellow';
+                //}
+
+                return {
+                    x: [execTime],
+                    y: [execPrice],
+                    mode: 'markers+text',
+                    name: action,
+                    marker: {
+                        size: 12,
+                        symbol: 'circle-open',
+                        color: color,
+                        line: { width: 1, color: 'black' }
+                    },
+                    text: [label + (exec.shares ? `<br>${exec.shares}sh` : '')],
+                    //text: [`${action} (${exec.shares})`],
+                    textposition: 'top center',
+                    showlegend: true
+                };
+            });
+
+            const layout = {
+                title: `${report.signal.ticker} 5-Min Chart for ${tradeDate}`,
+                xaxis: {
+                    title: 'Time (HH:MM)',
+                    type: 'date',
+                    autorange: true,
+                    tickformat: '%H:%M', // Only HH:MM
+                    tickangle: 45,
+                    rangeslider: { visible: false } // Disable rangeslider
+                },
+                yaxis: {
+                    title: 'Price',
+                    autorange: true
+                },
+                margin: { t: 50, b: 50, l: 50, r: 50 }, // Adjusted margin
+                showlegend: true,
+                height: 600,
+                dragmode: 'pan', // Enable panning for scrolling
+                scrollZoom: true
+            };
+
+            Plotly.newPlot(containerId, [candlestick, ...executionTraces], layout);
+        }
+
+        function searchReports() {
+            const tradeid = document.getElementById('tradeid-input').value.trim();
+            const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
+            const startDate = document.getElementById('start-date-input').value;
+            const endDate = document.getElementById('end-date-input').value;
+
+            if (!tradeid && !ticker && !startDate && !endDate) {
+                alert('Please enter at least a Trade ID, Ticker, or date range.');
+                return;
+            }
+
+            if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+                alert('Start date cannot be after end date.');
+                return;
+            }
+
+            let url = '/get_trade_reports?';
+            const params = [];
+            if (tradeid) params.push(`tradeid=${encodeURIComponent(tradeid)}`);
+            if (ticker) params.push(`ticker=${encodeURIComponent(ticker)}`);
+            if (startDate) params.push(`start_date=${startDate}`);
+            if (endDate) params.push(`end_date=${endDate}`);
+            url += params.join('&');
+
+            console.log('Fetching reports from:', url);
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('reports-container');
+                    const resultsDiv = document.getElementById('results');
+                    if (data.status === 'error') {
+                        container.innerHTML = `<p style="color: red;">Error: ${data.error}</p>`;
+                        resultsDiv.style.display = 'block';
+                        return;
+                    }
+
+                    const reports = data.reports;
+                    if (!reports || reports.length === 0) {
+                        container.innerHTML = '<p>No trades found for the given criteria.</p>';
+                        resultsDiv.style.display = 'block';
+                        return;
+                    }
+
+                    const dateGroups = {};
+                    reports.forEach(report => {
+                        const tradeDate = report.signal.time.split(' ')[0];
+                        if (!dateGroups[tradeDate]) dateGroups[tradeDate] = [];
+                        dateGroups[tradeDate].push(report.signal.ticker);
+                    });
+
+                    let allOhlc = {};
+                    let fetchPromises = Object.keys(dateGroups).map(date => {
+                        const tickers = [...new Set(dateGroups[date])];
+                        return fetch(`/get_ohlc_data?ticker=${tickers.map(encodeURIComponent).join('&ticker=')}&date=${date}`)
+                            .then(response => response.json())
+                            .then(ohlcData => {
+                                if (ohlcData.status === 'success') {
+                                    allOhlc[date] = ohlcData.ohlc;
+                                }
+                            })
+                            .catch(error => console.error(`OHLC fetch error for ${date}:`, error));
+                    });
+
+                    Promise.all(fetchPromises).then(() => {
+                        let html = '';
+                        reports.forEach(report => {
+                            const tradeDate = report.signal.time.split(' ')[0];
+                            const containerId = `chart-${report.tradeID}`;
+                            html += `
+                                <div class="trade-card">
+                                    <h4>Trade ID: ${report.tradeID} | Ticker: ${report.signal.ticker} | Time: ${report.signal.time}</h4>
+                                    <div id="${containerId}" class="chart-container"></div>
+                                    <h5>Signal</h5>
+                                    <table>
+                                        <tr><th>Ticker</th><td>${report.signal.ticker}</td></tr>
+                                        <tr><th>Strategy</th><td>${report.signal.strategy}</td></tr>
+                                        <tr><th>Entry Price</th><td>${report.signal.entry_price?.toFixed(2) || 'N/A'}</td></tr>
+                                        <tr><th>Shares</th><td>${report.signal.shares || 'N/A'}</td></tr>
+                                        <tr><th>Stop</th><td>${report.signal.hi?.toFixed(2) || 'N/A'}</td></tr>
+                                        <tr><th>Target</th><td>${report.signal.target?.toFixed(2) || 'N/A'}</td></tr>
+                                        <tr><th>Status</th><td>${report.signal.status}</td></tr>
+                                    </table>
+                            `;
+                            if (report.active_trade) {
+                                html += `
+                                    <h5>Active Trade</h5>
+                                    <table>
+                                        <tr><th>Stop Loss</th><td>${report.active_trade.stop_loss?.toFixed(2) || 'N/A'}</td></tr>
+                                        <tr><th>Last Price</th><td>${report.active_trade.last_price?.toFixed(2) || 'N/A'}</td></tr>
+                                        <tr><th>Unrealized P&L</th><td>${report.active_trade.unrealized?.toFixed(2) || 'N/A'}</td></tr>
+                                    </table>
+                                `;
+                            }
+                            if (report.closed_trade) {
+                                html += `
+                                    <h5>Closed Trade</h5>
+                                    <table>
+                                        <tr><th>Exit Price</th><td>${report.closed_trade.exit_price?.toFixed(2) || 'N/A'}</td></tr>
+                                        <tr><th>Realized P&L</th><td>$${report.closed_trade.realized.toFixed(2)}</td></tr>
+                                        <tr><th>R/R Ratio</th><td>${report.closed_trade.rr.toFixed(2)}</td></tr>
+                                        <tr><th>Reason</th><td>${report.closed_trade.reason || 'N/A'}</td></tr>
+                                    </table>
+                                `;
+                            }
+                            if (report.executions && report.executions.length > 0) {
+                                html += '<h5>Executions</h5><ul>';
+                                report.executions.forEach(exec => {
+                                    html += `<li><strong>${exec.table}:</strong> ${exec.action || 'N/A'} ${exec.shares || 'N/A'} shares at $${(exec.price || exec.stop_loss)?.toFixed(2) || 'N/A'} (${exec.status || 'N/A'})</li>`;
+                                });
+                                html += '</ul>';
+                            } else {
+                                html += '<p>No executions.</p>';
+                            }
+                            html += '</div>';
+                        });
+                        container.innerHTML = html;
+                        reports.forEach(report => {
+                            const tradeDate = report.signal.time.split(' ')[0];
+                            const ohlcForTicker = allOhlc[tradeDate]?.[report.signal.ticker] || [];
+                            renderChart(report, `chart-${report.tradeID}`, ohlcForTicker);
+                        });
+                        resultsDiv.style.display = 'block';
+                    });
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('reports-container').innerHTML = `<p style="color: red;">Network error: ${error}</p>`;
+                    document.getElementById('results').style.display = 'block';
+                });
+        }
+
+        const socket = io();
+        socket.on('trade_reports_update', (data) => {
+            console.log('Real-time update:', data);
+        });
+    </script>
+</body>
+</html>

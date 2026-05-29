@@ -7,7 +7,7 @@ import os
 from flask import Flask, request, jsonify, render_template
 from flask_socketio import SocketIO, emit
 import config
-from datetime import datetime, timedelta, time as dt_time
+from datetime import datetime, timedelta
 import threading
 from decimal import Decimal  # For handling Decimal to float conversion
 import time
@@ -46,36 +46,175 @@ server_ready_event = threading.Event()
 logging.getLogger('').handlers.clear()
 logging.getLogger('werkzeug').disabled = True
 
-_LOG_FMT = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+print(f"Root logger handlers after clear: {logging.getLogger('').handlers}")
 
-def _setup_logger(name, log_file=None, console_level=logging.WARNING):
-    log = logging.getLogger(name)
-    log.setLevel(logging.DEBUG)
-    log.propagate = False
-    if not log.handlers:
-        if log_file:
-            fh = logging.FileHandler(log_file, encoding='utf-8')
-            fh.setLevel(logging.DEBUG)
-            fh.setFormatter(_LOG_FMT)
-            log.addHandler(fh)
-        ch = logging.StreamHandler()
-        ch.setLevel(console_level)
-        ch.setFormatter(_LOG_FMT)
-        log.addHandler(ch)
-    return log
+# __main__ logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.propagate = False
+if not logger.handlers:
+    c_handler = logging.StreamHandler()
+    c_handler.setLevel(logging.INFO)
+    c_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    c_handler.setFormatter(c_format)
+    logger.addHandler(c_handler)
+    logger.debug(f"Main logger handlers: {logger.handlers}")
 
-logger    = _setup_logger(__name__,        console_level=logging.INFO)
-sl_logger = _setup_logger('StrategyLogic', 'strategy_logic.log')
-_setup_logger('AlertManager',  'alertmanager.log')
-_setup_logger('OrderExecution','orderexecution.log')
-_setup_logger('TradeMonitor',  'trademonitor.log')
-_setup_logger('EndOfDay',      'End_of_day.log')
-_setup_logger('VwapFetch',     'quoteupdate.log')
-_setup_logger('Server',        console_level=logging.WARNING)
-_setup_logger('Minichart',     'minichart.log')
-_setup_logger('SLMonitor',     'slmonitor.log')
-_setup_logger('SSMonitor',     'ssmonitor.log')
-_setup_logger('MultiStrategy', 'multi_strategy.log')     
+# AlertManager logger
+am_logger = logging.getLogger('AlertManager')
+am_logger.setLevel(logging.DEBUG)
+am_logger.propagate = False
+if not am_logger.handlers:
+    am_handler = logging.FileHandler('alertmanager.log')  # This matches the file already used inside AlertManager class
+    am_handler.setLevel(logging.DEBUG)
+    am_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    am_handler.setFormatter(am_format)
+    am_logger.addHandler(am_handler)
+    
+    # Optional: also log to console at INFO level (like most other modules)
+    am_console_handler = logging.StreamHandler()
+    am_console_handler.setLevel(logging.INFO)
+    am_console_handler.setFormatter(am_format)
+    am_logger.addHandler(am_console_handler)
+    
+    logger.debug(f"AlertManager logger handlers: {am_logger.handlers}")
+
+# OrderExecution logger
+oe_logger = logging.getLogger('OrderExecution')
+oe_logger.setLevel(logging.DEBUG)
+oe_logger.propagate = False
+if not oe_logger.handlers:
+    oe_handler = logging.FileHandler('orderexecution.log')
+    oe_handler.setLevel(logging.DEBUG)
+    oe_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    oe_handler.setFormatter(oe_format)
+    oe_logger.addHandler(oe_handler)
+    oe_console_handler = logging.StreamHandler()
+    oe_console_handler.setLevel(logging.INFO)
+    oe_console_handler.setFormatter(oe_format)
+    oe_logger.addHandler(oe_console_handler)
+    logger.debug(f"OrderExecution logger handlers: {oe_logger.handlers}")
+
+# TradeMonitor logger
+tm_logger = logging.getLogger('TradeMonitor')
+tm_logger.setLevel(logging.DEBUG)
+tm_logger.propagate = False
+if not tm_logger.handlers:
+    tm_handler = logging.FileHandler('trademonitor.log')
+    tm_handler.setLevel(logging.DEBUG)
+    tm_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    tm_handler.setFormatter(tm_format)
+    tm_logger.addHandler(tm_handler)
+    tm_console_handler = logging.StreamHandler()
+    tm_console_handler.setLevel(logging.INFO)
+    tm_console_handler.setFormatter(tm_format)
+    tm_logger.addHandler(tm_console_handler)
+    logger.debug(f"TradeMonitor logger handlers: {tm_logger.handlers}")
+
+# StrategyLogic logger
+sl_logger = logging.getLogger('StrategyLogic')
+sl_logger.setLevel(logging.DEBUG)
+sl_logger.propagate = False
+if not sl_logger.handlers:
+    sl_handler = logging.FileHandler('strategy_logic.log')
+    sl_handler.setLevel(logging.DEBUG)
+    sl_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    sl_handler.setFormatter(sl_format)
+    sl_logger.addHandler(sl_handler)
+    
+    
+    logger.debug(f"StrategyLogic logger handlers: {sl_logger.handlers}")
+    
+# EndOfDay logger
+eod_logger = logging.getLogger('EndOfDay')
+eod_logger.setLevel(logging.DEBUG)
+eod_logger.propagate = False
+if not eod_logger.handlers:
+    eod_handler = logging.FileHandler('End_of_day.log')
+    eod_handler.setLevel(logging.DEBUG)
+    eod_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    eod_handler.setFormatter(eod_format)
+    eod_logger.addHandler(eod_handler)
+    
+    
+    logger.debug(f"EndOfDay logger handlers: {eod_logger.handlers}")    
+
+# VwapFetch logger
+#vf_logger = logging.getLogger('VwapFetch')
+#vf_logger.setLevel(logging.DEBUG)
+#vf_logger.propagate = False
+#if not vf_logger.handlers:
+    #vf_handler = logging.FileHandler('quoteupdate.log')
+    #vf_handler.setLevel(logging.DEBUG)
+    #vf_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    #vf_handler.setFormatter(vf_format)
+    #vf_logger.addHandler(vf_handler)
+    #vf_console_handler = logging.StreamHandler()
+    #vf_console_handler.setLevel(logging.INFO)
+    #vf_console_handler.setFormatter(vf_format)
+    #vf_logger.addHandler(vf_console_handler)
+    #logger.debug(f"VwapFetch logger handlers: {vf_logger.handlers}")
+
+# Server logger (for APIConnection)
+server_logger = logging.getLogger('Server')
+server_logger.setLevel(logging.DEBUG)
+server_logger.propagate = False
+if not server_logger.handlers:
+    server_handler = logging.StreamHandler()
+    server_handler.setLevel(logging.INFO)
+    server_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    server_handler.setFormatter(server_format)
+    server_logger.addHandler(server_handler)
+    logger.debug(f"Server logger handlers: {server_logger.handlers}")
+
+# Minichart logger
+mc_logger = logging.getLogger('Minichart')
+mc_logger.setLevel(logging.DEBUG)
+mc_logger.propagate = False
+if not mc_logger.handlers:
+    mc_handler = logging.FileHandler('minichart.log')
+    mc_handler.setLevel(logging.DEBUG)
+    mc_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    mc_handler.setFormatter(mc_format)
+    mc_logger.addHandler(mc_handler)
+    mc_console_handler = logging.StreamHandler()
+    mc_console_handler.setLevel(logging.INFO)
+    mc_console_handler.setFormatter(mc_format)
+    mc_logger.addHandler(mc_console_handler)
+    logger.debug(f"Minichart logger handlers: {mc_logger.handlers}")
+    
+# SLMonitor logger
+slm_logger = logging.getLogger('SLMonitor')
+slm_logger.setLevel(logging.DEBUG)
+slm_logger.propagate = False
+if not slm_logger.handlers:
+    slm_handler = logging.FileHandler('slmonitor.log')
+    slm_handler.setLevel(logging.DEBUG)
+    slm_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    slm_handler.setFormatter(slm_format)
+    slm_logger.addHandler(slm_handler)
+    slm_console_handler = logging.StreamHandler()
+    slm_console_handler.setLevel(logging.INFO)
+    slm_console_handler.setFormatter(slm_format)
+    slm_logger.addHandler(slm_console_handler)
+    logger.debug(f"SLMonitor logger handlers: {slm_logger.handlers}")   
+    
+ssm_logger = logging.getLogger('SSMonitor')
+ssm_logger.setLevel(logging.DEBUG)
+ssm_logger.propagate = False
+if not ssm_logger.handlers:
+    ssm_handler = logging.FileHandler('ssmonitor.log')
+    ssm_handler.setLevel(logging.DEBUG)
+    ssm_fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ssm_handler.setFormatter(ssm_fmt)
+    ssm_logger.addHandler(ssm_handler)
+
+    ssm_console = logging.StreamHandler()
+    ssm_console.setLevel(logging.INFO)
+    ssm_console.setFormatter(ssm_fmt)
+    ssm_logger.addHandler(ssm_console)
+
+    logger.debug(f"SSMonitor logger handlers: {ssm_logger.handlers}")     
     
   
 
@@ -140,7 +279,7 @@ def initialize_modules():
     logger.info("Initializing modules")
     
     end_of_day = EndOfDay(socketio=socketio)
-    trade_monitor = TradeMonitor(db_pool=db_pool, socketio=socketio, order_execution = order_execution)
+    trade_monitor = TradeMonitor(db_pool=db_pool, socketio=socketio)
     vwap_fetch = VwapFetch(db_pool=db_pool, trade_monitor=trade_monitor, socketio=socketio)
     sl_monitor = SLMonitor(socketio=socketio)
     # Create order_execution FIRST without stopsell_monitor (pass None or omit if default=None)
@@ -149,10 +288,8 @@ def initialize_modules():
     # Now create stopsell_monitor with the existing order_execution
     stopsell_monitor = SSMonitor(order_execution=order_execution, socketio=socketio)
     
-    # Wire back-references now that both modules exist
+    # Manually set the reference on order_execution
     order_execution.stopsell_monitor = stopsell_monitor
-    trade_monitor.order_execution = order_execution
-    sl_monitor.trade_monitor = trade_monitor
     risk_management = RiskManagement(order_execution)
     strategy_logic = StrategyLogic(risk_management=risk_management, socketio=socketio)
     minichart = Minichart(db_pool=db_pool)  # Initialize Minichart with db_pool
@@ -162,8 +299,6 @@ def initialize_modules():
     # Link AlertManager to VwapFetch for real-time prices
     vwap_fetch.alert_manager = alert_manager
     logger.info("AlertManager linked to VwapFetch")
-    vwap_fetch.stopsell_monitor = stopsell_monitor
-    logger.info("SSMonitor linked to VwapFetch for missed-entry detection")
     alert_manager.start_alert_loop()
     logger.info("5-minute alert loop started")
     
@@ -212,215 +347,7 @@ def initialize_trade_id_counter():
         if conn:
             db_pool.putconn(conn)
             
-
-@socketio.on('toggle_bot')
-def handle_toggle_bot():
-    strategy_logic.bot_enabled = not strategy_logic.bot_enabled
-    emit('bot_state_update', {'enabled': strategy_logic.bot_enabled})
-    
-# Server
-@socketio.on('request_bot_state')
-def handle_request_bot_state():
-    emit('bot_state_update', {'enabled': strategy_logic.bot_enabled})    
-
-def update_hod_periodically():
-    """Run every ~64 seconds: update PMH (once available) and HOD (continuously after open)"""
-    while True:
-        now = datetime.now()
-        today_str = now.strftime('%Y-%m-%d')
-        today_timestamp_prefix = today_str.replace('-', '/') + '%'
-        market_open_str = f"{today_str} 09:30:00"
-        is_pre_market = now.time() < dt_time(9, 30)
-
-        # Sleep logic: wait until next cycle (~4 seconds past the minute)
-        if is_pre_market:
-            # Before 9:30: wake up ~every minute to check for incoming pre-market data
-            seconds_to_wait = 64 - (now.second + now.microsecond / 1e6)
-        else:
-            # After 9:30: normal cycle
-            seconds_to_wait = 64 - (now.second + now.microsecond / 1e6)
-
-        if seconds_to_wait < 0:
-            seconds_to_wait += 60
-        time.sleep(seconds_to_wait)
-
-        try:
-            with app.app_context():
-                conn = db_pool.getconn()
-                cursor = conn.cursor()
-
-                cursor.execute("SELECT ticker FROM tradeparameters WHERE date = %s", (today_str,))
-                tickers = [row[0].upper() for row in cursor.fetchall()]
-                if not tickers:
-                    db_pool.putconn(conn)
-                    continue
-
-                updates_made = False
-
-                for ticker in tickers:
-                    updated = False
-
-                    # Before 9:30: always update PMH to capture new higher highs
-                    if is_pre_market:
-                        cursor.execute("""
-                            SELECT MAX(high)
-                            FROM ohlc_1min
-                            WHERE ticker = %s
-                              AND "timestamp" LIKE %s
-                              AND TO_TIMESTAMP(timestamp, 'YYYY/MM/DD-HH24:MI') < %s
-                        """, (ticker, today_timestamp_prefix, market_open_str))
-                        pmh_row = cursor.fetchone()
-                        new_pmh = float(pmh_row[0]) if pmh_row and pmh_row[0] is not None else None
-                        if new_pmh is not None:
-                            cursor.execute("""
-                                UPDATE tradeparameters
-                                SET pmh = %s
-                                WHERE ticker = %s AND date = %s
-                            """, (new_pmh, ticker, today_str))
-                            updated = True
-                            updates_made = True
-
-                    # After 9:30: only set PMH if still NULL (final check)
-                    else:
-                        cursor.execute("""
-                            SELECT pmh FROM tradeparameters
-                            WHERE ticker = %s AND date = %s
-                        """, (ticker, today_str))
-                        current_pmh = cursor.fetchone()[0]
-
-                        if current_pmh is None:
-                            cursor.execute("""
-                                SELECT MAX(high)
-                                FROM ohlc_1min
-                                WHERE ticker = %s
-                                  AND "timestamp" LIKE %s
-                                  AND TO_TIMESTAMP(timestamp, 'YYYY/MM/DD-HH24:MI') < %s
-                            """, (ticker, today_timestamp_prefix, market_open_str))
-                            pmh_row = cursor.fetchone()
-                            new_pmh = float(pmh_row[0]) if pmh_row and pmh_row[0] is not None else None
-                            if new_pmh is not None:
-                                cursor.execute("""
-                                    UPDATE tradeparameters
-                                    SET pmh = %s
-                                    WHERE ticker = %s AND date = %s
-                                """, (new_pmh, ticker, today_str))
-                                updated = True
-                                updates_made = True
-
-                    # After market open: update HOD continuously
-                    if not is_pre_market:
-                        cursor.execute("""
-                            SELECT MAX(high)
-                            FROM ohlc_1min
-                            WHERE ticker = %s
-                              AND "timestamp" LIKE %s
-                              AND TO_TIMESTAMP(timestamp, 'YYYY/MM/DD-HH24:MI') >= %s
-                        """, (ticker, today_timestamp_prefix, market_open_str))
-                        hod_row = cursor.fetchone()
-                        new_hod = float(hod_row[0]) if hod_row and hod_row[0] is not None else None
-
-                        if new_hod is not None:
-                            cursor.execute("""
-                                UPDATE tradeparameters
-                                SET high = %s
-                                WHERE ticker = %s AND date = %s
-                            """, (new_hod, ticker, today_str))
-                            updated = True
-                            updates_made = True
-
-                if updates_made:
-                    conn.commit()
-                    logger.debug(f"Updated PMH/HOD for one or more tickers")
-
-                db_pool.putconn(conn)
-
-        except Exception as e:
-            logger.error(f"Error in periodic PMH/HOD update: {e}")
-            if conn:
-                db_pool.putconn(conn)
-
-
-# Add this route
-@app.route('/multi_monitor')
-def multi_monitor_page():
-    return render_template('multi_monitor.html')
-
-@socketio.on('request_account_mode')
-def handle_request_account_mode():
-    emit('account_mode_update', {
-        'mode': config.get_account_mode(),
-        'account': config.get_active_account()
-    })
-
-@socketio.on('set_account_mode')
-def handle_set_account_mode(data):
-    mode = data.get('mode', 'live')
-    config.set_account_mode(mode)
-    account = config.get_active_account()
-    logger.info(f"Account mode switched to: {mode} ({account}) — reconnecting DAS")
-    socketio.emit('account_mode_update', {'mode': mode, 'account': account})
-
-    # Cycle both DAS connections so they re-login with the new account.
-    # Done in a thread so the SocketIO handler returns immediately.
-    def _reconnect_das():
-        if api_connection and api_connection.connected:
-            logger.info(f"Cycling api_connection for account switch → {account}")
-            api_connection.handle_disconnection()
-        if vwap_fetch and vwap_fetch.connected:
-            logger.info(f"Cycling vwap_fetch for account switch → {account}")
-            vwap_fetch.reconnect()
-
-    threading.Thread(target=_reconnect_das, daemon=True).start()
-
-@socketio.on('request_multi_status')
-def send_multi_status():
-    if hasattr(trade_monitor, 'multi_pivots'):
-        import pytz
-        now_est = datetime.now(pytz.timezone('US/Eastern'))
-        cutoff_time = getattr(trade_monitor, 'multi_addon_cutoff', dt_time(10, 30))
-        past_cutoff = now_est.time() > cutoff_time
-        cutoff_str = cutoff_time.strftime('%I:%M %p')
-        status = {}
-        for ticker, data in trade_monitor.multi_pivots.items():
-            status[ticker] = {
-                'add_count': data.get('add_count', 0),
-                'pivot_high': float(data.get('pivot_high', 0)),
-                'broken': data.get('broken', False),
-                'current_stop': float(trade_monitor.multi_current_stop_level.get(ticker, 0)),
-                'original_risk': float(trade_monitor.multi_original_risk.get(ticker, 0)),
-                'last_trigger': str(data.get('last_trigger_ts')) if data.get('last_trigger_ts') else '—',
-                'cutoff': past_cutoff or (ticker in getattr(trade_monitor, '_multi_cutoff_logged', set())),
-                'cutoff_time': cutoff_str
-            }
-        emit('multi_status_update', status)
-        
-  # === MULTI PYRAMID CONTROL ===
-@app.route('/cancel_multi_pyramid', methods=['POST'])
-def cancel_multi_pyramid():
-    data = request.get_json()
-    ticker = data.get('ticker')
-    if not ticker:
-        return jsonify({'status': 'error', 'message': 'No ticker provided'})
-
-    if hasattr(trade_monitor, 'cancel_multi_pyramid'):
-        success = trade_monitor.cancel_multi_pyramid(ticker)
-        return jsonify({'status': 'success' if success else 'error'})
-    else:
-        return jsonify({'status': 'error', 'message': 'TradeMonitor not ready'})
-    
-    
-    
-    
-@socketio.on('cancel_multi_pyramid')
-def handle_cancel_multi(data):
-    ticker = data.get('ticker')
-    if ticker and hasattr(trade_monitor, 'cancel_multi_pyramid'):
-        trade_monitor.cancel_multi_pyramid(ticker)          
-            
-@socketio.on('request_enabled_strategies')
-def send_enabled_strategies():
-    enabled = list(strategy_logic.enabled_strategies) if strategy_logic else []
-    emit('enabled_strategies_update', {'enabled_strategies': enabled})            
+           
             
 # ------------------------------------------------------------------
 # NEW: Candle Conditions page and real-time updates
@@ -435,269 +362,114 @@ def candle_conditions_page():
 
 @socketio.on('request_candle_conditions')
 def send_candle_conditions():
-    conn = None
+    """Fetch current candle conditions for all active tickers and emit to clients.
+    Only shows strategies that are currently enabled in StrategyLogic."""
     try:
-        conn = db_pool.getconn()
-        cursor = conn.cursor()
+        with db_lock:
+            conn = db_pool.getconn()
+            cursor = conn.cursor()
 
-        # 1. Get tickers + params
-        cursor.execute("""
-            SELECT DISTINCT ON (ticker) ticker, open, pmh, vwap, last
-            FROM tradeparameters
-            WHERE date::date = CURRENT_DATE
-            ORDER BY ticker, date DESC
-        """)
-        param_rows = cursor.fetchall()
-        tickers = [row[0].upper() for row in param_rows]
+            # 1. Get all active tickers today + static parameters (open, pmh, vwap)
+            cursor.execute("""
+                SELECT DISTINCT ON (ticker) ticker, open, high AS pmh, vwap
+                FROM tradeparameters
+                WHERE date::date = CURRENT_DATE
+                ORDER BY ticker, date DESC
+            """)
+            param_rows = cursor.fetchall()
+            tickers = [row[0].upper() for row in param_rows]
 
-        if not tickers:
-            emit('candle_conditions_update', {'data': {}, 'ticker_strategies': {}})
-            return
+            if not tickers:
+                emit('candle_conditions_update', {'data': {}, 'enabled_strategies': []})
+                db_pool.putconn(conn)
+                return
 
-        param_map = {row[0].upper(): {
-            'open': float(row[1]) if row[1] else None,
-            'pmh': float(row[2]) if row[2] else None,
-            'vwap': float(row[3]) if row[3] else None,
-            'last_price': float(row[4]) if len(row) > 4 and row[4] is not None else None  # ← NEW: last price
-        } for row in param_rows}
+            param_map = {
+                row[0].upper(): {
+                    'open': float(row[1]) if row[1] is not None else None,
+                    'pmh': float(row[2]) if row[2] is not None else None,
+                    'vwap': float(row[3]) if row[3] is not None else None,
+                } for row in param_rows
+            }
 
-        # 2. Fetch per-ticker selected strategies
-        cursor.execute("""
-            SELECT ticker, strategy_risks
-            FROM tradeparameters
-            WHERE date::date = CURRENT_DATE
-        """)
-        ticker_strategies = {}
-        for row in cursor.fetchall():
-            ticker = row[0].upper()
-            risks = row[1] or {}
-            ticker_strategies[ticker] = list(risks.keys())
+            # 2. Get list of currently enabled strategies from StrategyLogic
+            enabled_strategies = list(strategy_logic.enabled_strategies) if strategy_logic else []
 
-        # 3. Compute HOD from ohlc_1min (session high since 9:30) with time (latest timestamp for max high)
-        cursor.execute("""
-            SELECT ticker, hod, hod_time
-            FROM (
-                SELECT ticker, high AS hod, timestamp AS hod_time,
-                       ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY high DESC, timestamp DESC) AS rn
-                FROM ohlc_1min
+            # 3. Get latest 1min candle per ticker (if any exist today)
+            cursor.execute("""
+                SELECT DISTINCT ON (ticker) *
+                FROM candleconditions_1min
                 WHERE ticker = ANY(%s)
-                  AND TO_TIMESTAMP(timestamp, 'YYYY/MM/DD-HH24:MI')::date = CURRENT_DATE
-                  AND TO_TIMESTAMP(timestamp, 'YYYY/MM/DD-HH24:MI')::time >= '09:30'::time
-            ) sub
-            WHERE rn = 1
-        """, (tickers,))
-        hod_map = {row[0].upper(): {'hod': float(row[1]) if row[1] is not None else None, 
-                                    'hod_time': row[2]} for row in cursor.fetchall()}
+                  AND timestamp::date = CURRENT_DATE
+                ORDER BY ticker, timestamp DESC
+            """, (tickers,))
+            candle_rows = {row[1].upper(): row for row in cursor.fetchall()}  # row[1] = ticker
 
-        # 4. Compute true Pre-Market High (before 9:30)
-        cursor.execute("""
-            SELECT ticker, MAX(high) AS pmh
-            FROM ohlc_1min
-            WHERE ticker = ANY(%s)
-              AND TO_TIMESTAMP(timestamp, 'YYYY/MM/DD-HH24:MI')::date = CURRENT_DATE
-              AND TO_TIMESTAMP(timestamp, 'YYYY/MM/DD-HH24:MI')::time < '09:30'::time
-            GROUP BY ticker
-        """, (tickers,))
-        pmh_map = {row[0].upper(): float(row[1]) if row[1] is not None else None for row in cursor.fetchall()}
+            # 4. Compute HOD (high of day since 9:30 AM)
+            cursor.execute("""
+                SELECT ticker, MAX(high) AS hod
+                FROM candleconditions_1min
+                WHERE ticker = ANY(%s)
+                  AND timestamp::date = CURRENT_DATE
+                  AND timestamp::time >= '09:30'::time
+                GROUP BY ticker
+            """, (tickers,))
+            hod_map = {row[0].upper(): float(row[1]) if row[1] is not None else None for row in cursor.fetchall()}
 
-        # 5. Build data — query correct table per strategy + fired signal info
+            db_pool.putconn(conn)
+
+        # 5. Map strategy names to their state column index in the candle row
+        state_column_map = {
+            '1Min-below_pmh': 14,      # state_below_pmh
+            '5Min-below_pmh': 14,
+            '1Min-vwap_crossover': 15, # state_vwap_crossover
+            '5Min-vwap_crossover': 15,
+            '5Min-below_sma': 13,      # state_sma
+            '1Min-below_sma': 13,
+            # Add more if you create new strategies with dedicated state columns
+        }
+
+        # 6. Build response data
         data = {}
-        def to_float(val):
-            return float(val) if val is not None else None
-
         for ticker in tickers:
-            selected = ticker_strategies.get(ticker, [])
-            if not selected:
-                continue
-
+            candle = candle_rows.get(ticker)
             param = param_map.get(ticker, {})
+
+            ts_str = candle[3].strftime('%H:%M') if candle and candle[3] else 'N/A'
+
+            common = {
+                'timestamp': ts_str,
+                'open': round(candle[4], 2) if candle and candle[4] is not None else (round(param.get('open'), 2) if param.get('open') is not None else 'N/A'),
+                'pmh': round(param.get('pmh'), 2) if param.get('pmh') is not None else 'N/A',
+                'hod': round(hod_map.get(ticker), 2) if hod_map.get(ticker) is not None else 'N/A',
+                'vwap': round(candle[8], 2) if candle and candle[8] is not None else (round(param.get('vwap'), 2) if param.get('vwap') is not None else 'N/A'),
+                'sma10': round(candle[10], 2) if candle and candle[10] is not None else 'N/A',
+            }
+
             data[ticker] = {}
-
-            for strategy in selected:
-                # Choose correct table and state column
-                table = 'candleconditions_5min' if strategy.startswith('5Min') else 'candleconditions_1min'
-                state_col_map = {
-                    'below_pmh': 'state_below_pmh',
-                    'vwap_crossover': 'state_vwap_crossover',
-                    'below_sma': 'state_sma',
-                    '2g2r': 'state_2g2r',
-                    'vwap_dev': 'state_vwap_dev' # add more if needed
-                }
-                suffix = strategy.split('-')[-1] if '-' in strategy else ''
-                state_col = state_col_map.get(suffix)
-
-                # Get latest candle
-                cursor.execute(f"""
-                    SELECT timestamp, open, high, close, vwap, sma_10
-                    FROM {table}
-                    WHERE ticker = %s
-                      AND timestamp::date = CURRENT_DATE
-                    ORDER BY timestamp DESC
-                    LIMIT 1
-                """, (ticker,))
-                row = cursor.fetchone()
-
-                if row:
-                    ts_str = row[0].strftime('%H:%M') if row[0] else 'N/A'
-                    open_val = to_float(row[1])
-                    high_val = to_float(row[2])
-                    close_val = to_float(row[3])
-                    vwap_val = to_float(row[4])
-                    sma10_val = to_float(row[5])
+            for strategy in enabled_strategies:
+                if strategy.endswith('below_pmh'):
+                    state_idx = state_column_map.get('1Min-below_pmh')  # same column
+                elif strategy.endswith('vwap_crossover'):
+                    state_idx = state_column_map.get('1Min-vwap_crossover')
+                elif strategy.endswith('below_sma'):
+                    state_idx = state_column_map.get('5Min-below_sma')
                 else:
-                    ts_str = 'N/A'
-                    open_val = high_val = close_val = vwap_val = sma10_val = None
-                
-                hod_info = hod_map.get(ticker, {'hod': None, 'hod_time': None})
-                hod_val = hod_info['hod']
-                hod_time_raw = hod_info.get('hod_time')
-                hod_time_str = 'N/A'
-                if hod_time_raw and isinstance(hod_time_raw, str) and len(hod_time_raw) >= 16:
-                    hod_time_str = hod_time_raw[-5:]                 # last 5 chars = 'HH:MM'    
+                    state_idx = None  # fallback, will show N/A
 
-                common = {
-                    'timestamp': ts_str,
-                    'open': round(open_val, 2) if open_val is not None else (round(to_float(param.get('open')), 2) if param.get('open') else 'N/A'),
-                    'pmh': round(pmh_map.get(ticker), 2) if pmh_map.get(ticker) is not None else 'N/A',
-                    'hod': round(hod_val, 2) if hod_val is not None else 'N/A',
-                    'hod_time': hod_time_str,
-                    'vwap': round(vwap_val, 2) if vwap_val is not None else (round(to_float(param.get('vwap')), 2) if param.get('vwap') else 'N/A'),
-                    'sma10': round(sma10_val, 2) if sma10_val is not None else 'N/A',
-                    'vwap_dev_pct': 'N/A',  # placeholder
-                    'sma_dev_pct': 'N/A'  # NEW: placeholder for SMA deviation
-                }
-                
-                # Calculate VWAP deviation % using live last price
-                last_price = param.get('last_price')
-                vwap_final = vwap_val or param.get('vwap')
-                if last_price is not None and vwap_final is not None and vwap_final != 0:
-                    dev_pct = ((last_price - vwap_final) / vwap_final) * 100
-                    common['vwap_dev_pct'] = round(dev_pct, 2)
-                else:
-                    common['vwap_dev_pct'] = 'N/A'
-                    
-                # NEW: Calculate SMA deviation % using live last price
-                sma_final = sma10_val
-                if last_price is not None and sma_final is not None and sma_final != 0:
-                    sma_dev_pct = ((last_price - sma_final) / sma_final) * 100
-                    common['sma_dev_pct'] = round(sma_dev_pct, 2)
-                else:
-                    common['sma_dev_pct'] = 'N/A'    
+                state_value = candle[state_idx] if candle and state_idx is not None else 'N/A'
 
-                # Get current state (latest candle)
-                state_value = 'N/A'
-                if row and state_col:
-                    cursor.execute(f"""
-                        SELECT {state_col}
-                        FROM {table}
-                        WHERE ticker = %s
-                          AND timestamp::date = CURRENT_DATE
-                        ORDER BY timestamp DESC
-                        LIMIT 1
-                    """, (ticker,))
-                    state_row = cursor.fetchone()
-                    state_value = state_row[0] or 'N/A' if state_row else 'N/A'
+                data[ticker][strategy] = {**common, 'state': state_value}
 
-                # Compute Fired Signal: (count) first_time
-                fired_signal = '-'
-                signal_price = '-'
-                if state_col:
-                    cursor.execute(f"""
-                        SELECT COUNT(*), MIN(timestamp)
-                        FROM {table}
-                        WHERE ticker = %s
-                          AND timestamp::date = CURRENT_DATE
-                          AND {state_col} = 'SIGNAL_READY'
-                    """, (ticker,))
-                    sig_row = cursor.fetchone()
-                    count = sig_row[0] if sig_row else 0
-                    first_time = sig_row[1]
-                    if count > 0 and first_time:
-                        time_str = first_time.strftime('%H:%M:%S')
-                        fired_signal = f"({count}) {time_str}"
-                        
-                        # Get the close price of the first signal candle
-                        cursor.execute(f"""
-                            SELECT close
-                            FROM {table}
-                            WHERE ticker = %s
-                              AND timestamp = %s
-                        """, (ticker, first_time))
-                        close_row = cursor.fetchone()
-                        if close_row and close_row[0] is not None:
-                            signal_price = round(float(close_row[0]), 2)
-
-                data[ticker][strategy] = {**common, 'state': state_value, 'fired_signal': fired_signal, 'signal_price': signal_price}
-
-                
-        # NEW: Insert into candle_conditions_log before emitting
-        # We split timestamp into date and time for the table
-        today_str = datetime.now().strftime('%Y-%m-%d')
-        for ticker in data:
-            for strategy, details in data[ticker].items():
-                ts_str = details.get('timestamp', 'N/A')
-                if ts_str == 'N/A':
-                    continue  # Skip invalid timestamps
-
-                # Parse date/time from ts_str if needed (assuming ts_str is 'HH:MM')
-                log_time = ts_str  # Use as-is if it's already 'HH:MM'
-                log_date = today_str  # Or derive from full timestamp if available
-
-                cursor.execute("""
-                    INSERT INTO candle_conditions_log 
-                    (date, time, ticker, strategy, timestamp_str, open_price, pmh, hod, vwap, 
-                     sma10, vwap_dev_pct, sma_dev_pct, state, fired_signal, last_price, hod_time, signal_price)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (date, time, ticker, strategy) DO UPDATE SET
-                        timestamp_str = EXCLUDED.timestamp_str,
-                        open_price = EXCLUDED.open_price,
-                        pmh = EXCLUDED.pmh,
-                        hod = EXCLUDED.hod,
-                        vwap = EXCLUDED.vwap,
-                        sma10 = EXCLUDED.sma10,
-                        vwap_dev_pct = EXCLUDED.vwap_dev_pct,
-                        sma_dev_pct = EXCLUDED.sma_dev_pct,
-                        state = EXCLUDED.state,
-                        fired_signal = EXCLUDED.fired_signal,
-                        last_price = EXCLUDED.last_price,
-                        hod_time = EXCLUDED.hod_time,
-                        signal_price = EXCLUDED.signal_price,
-                        logged_at = CURRENT_TIMESTAMP
-                """, (
-                    log_date,
-                    log_time,
-                    ticker,
-                    strategy,
-                    ts_str,
-                    details.get('open') if details.get('open') != 'N/A' else None,
-                    details.get('pmh') if details.get('pmh') != 'N/A' else None,
-                    details.get('hod') if details.get('hod') != 'N/A' else None,
-                    details.get('vwap') if details.get('vwap') != 'N/A' else None,
-                    details.get('sma10') if details.get('sma10') != 'N/A' else None,
-                    details.get('vwap_dev_pct') if details.get('vwap_dev_pct') != 'N/A' else None,
-                    details.get('sma_dev_pct') if details.get('sma_dev_pct') != 'N/A' else None,
-                    details.get('state') if details.get('state') != 'N/A' else None,
-                    details.get('fired_signal') if details.get('fired_signal') != '-' else None,
-                    param_map.get(ticker, {}).get('last_price'),  # Last price from param_map
-                    details.get('hod_time') if details.get('hod_time') != 'N/A' else None,
-                    details.get('signal_price') if details.get('signal_price') != '-' else None
-                ))
-
-        conn.commit()
-
-
-        # 6. Emit
+        # 7. Send to frontend with enabled strategies list
         emit('candle_conditions_update', {
             'data': data,
-            'ticker_strategies': ticker_strategies
+            'enabled_strategies': enabled_strategies
         })
 
     except Exception as e:
         logger.error(f"Error in send_candle_conditions: {e}")
-        emit('candle_conditions_update', {'data': {}, 'ticker_strategies': {}})
-    finally:
-        if conn:
-            db_pool.putconn(conn)   
+        emit('candle_conditions_update', {'data': {}, 'enabled_strategies': []})
 
 @app.route('/toggle_alerts', methods=['POST'])
 def toggle_alerts():
@@ -925,7 +697,7 @@ def get_order_data():
                     #logger.warning(f"⚠️  NO LAST HIGHEST HIGH found for {ticker}")
                     return None
         except Exception as e:
-            logger.error(f"Error finding last highest high for {ticker}: {e}")
+            logger.error(f"❌ Error finding last highest high for {ticker}: {e}")
             if 'cursor' in locals() and cursor:
                 cursor.close()
             if 'conn' in locals() and conn:
@@ -990,10 +762,10 @@ def get_order_data():
         return jsonify(response)
         
     except psycopg2.Error as e:
-        logger.error(f"DB Error for {ticker}: {e}")
+        logger.error(f"❌ DB Error for {ticker}: {e}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
     except ValueError as e:
-        logger.error(f"Value Error for {ticker}: {e}")
+        logger.error(f"❌ Value Error for {ticker}: {e}")
         return jsonify({'status': 'error', 'error': 'Invalid numeric data in database'}), 500
 
 @app.route('/connect', methods=['POST'])
@@ -1088,9 +860,7 @@ def close_trade():
         logger.error(f"Error closing position for {ticker}, tradeID {trade_id}: {e}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
-@app.route('/add_ticker_page')
-def add_ticker_page():
-    return render_template('add_ticker.html')
+
     
 @app.route('/get_ticker_details', methods=['GET'])
 def get_ticker_details():
@@ -1196,69 +966,152 @@ def get_tickers():
             if conn:
                 db_pool.putconn(conn)
             return jsonify({'status': 'error', 'error': str(e)}), 500
+        
+@app.route('/remove_ticker', methods=['POST'])
+def remove_ticker():
+    ticker = request.form.get('ticker')
+    with db_lock:
+        try:
+            conn = db_pool.getconn()
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM tradeparameters WHERE ticker = %s', (ticker,))                    # NEW: Deactivate alerts for this ticker
+            try:
+                alert_manager.deactivate_ticker_alerts(ticker)
+                logger.info(f"Voice alerts deactivated for {ticker}")
+            except Exception as e:
+                logger.warning(f"Failed to deactivate alerts for {ticker}: {e}")
+        
+            conn.commit()
+            strategy_logic.remove_ticker(ticker)
+            today = datetime.now().strftime('%Y-%m-%d')
+            cursor.execute('SELECT ticker, date, time, risk_1min, risk_5min, rsi_1min, rsi_5min FROM tradeparameters WHERE date = %s', (today,))
+            tickers = [
+                {
+                    'ticker': row[0],
+                    'date': row[1],
+                    'time': row[2],
+                    'risk_1m': float(row[3]) if row[3] is not None else None,
+                    'risk_5m': float(row[4]) if row[4] is not None else None,
+                    'rsi_1m': row[5],
+                    'rsi_5m': row[6]
+                } for row in cursor.fetchall()
+            ]
+            db_pool.putconn(conn)
+            socketio.emit('update_tickers', {'tickers': tickers})
+            return jsonify({'status': 'success'})
+        except psycopg2.Error as e:
+            logger.error(f"Error removing ticker {ticker}: {e}")
+            if cursor:
+                cursor.close()
+            if conn:
+                db_pool.putconn(conn)
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+        
 
 @app.route('/add_ticker', methods=['POST'])
 def add_ticker():
-    data = request.get_json()
-    ticker = data.get('ticker')
-    rsi_1min = data.get('rsi_1min', '1')
-    rsi_5min = data.get('rsi_5min', '50')
-    selected_strategies = data.get('selected_strategies', [])
-    strategy_risks = data.get('strategy_risks', {})
+    data = request.form
+    tickers = data.getlist('tickers[]')
+    risk_1m = data.getlist('risk_1m[]')
+    risk_5m = data.getlist('risk_5m[]')
+    rsi_1m = data.getlist('rsi_1m[]')
+    rsi_5m = data.getlist('rsi_5m[]')
+    
+    list_lengths = [len(tickers), len(risk_1m), len(risk_5m), len(rsi_1m), len(rsi_5m)]
+    if not tickers or not all(length == len(tickers) for length in list_lengths):
+        logger.error(f"Invalid form data: mismatched list lengths {list_lengths}")
+        return jsonify({'status': 'failure', 'message': 'All fields must have the same number of entries'}), 400
 
-    if not ticker or not selected_strategies:
-        return jsonify({'status': 'error', 'error': 'Ticker and at least one strategy required'}), 400
-
-    ticker = ticker.upper()
-
-    today = datetime.now().strftime('%Y-%m-%d')
-    current_time_str = datetime.now().strftime('%H:%M:%S')  # ← NEW
-
+    inserted_count = 0
+    
+    
     try:
         with db_lock:
             conn = db_pool.getconn()
             cursor = conn.cursor()
+            date = datetime.now().strftime('%Y-%m-%d')
+            time = datetime.now().strftime('%H:%M:%S')
+            for ticker, r1m, r5m, r1r, r5r in zip(tickers, risk_1m, risk_5m, rsi_1m, rsi_5m):
+                if not ticker or not ticker.strip():
+                    logger.warning(f"Skipping empty or whitespace ticker at index {inserted_count}")
+                    continue
+                
+                cursor.execute('SELECT 1 FROM tradeparameters WHERE ticker = %s AND date = %s', (ticker.strip(), date))
+                if cursor.fetchone():
+                    logger.warning(f"Ticker {ticker} already exists for date {date}, skipping insertion")
+                    continue
+                
+                try:
+                    r1m_value = float(r1m) if r1m and r1m.strip() else None
+                except (ValueError, TypeError):
+                    r1m_value = None
+                try:
+                    r5m_value = float(r5m) if r5m and r5m.strip() else None
+                except (ValueError, TypeError):
+                    r5m_value = None
+                
+                r1r_value = r1r.strip() if r1r and r1r.strip() else '50'
+                r5r_value = r5r.strip() if r5r and r5r.strip() else '50'
+                
+                cursor.execute('''
+                    INSERT INTO tradeparameters (ticker, date, time, risk_1min, risk_5min, rsi_1min, rsi_5min)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ''', (ticker.strip(), date, time, r1m_value, r5m_value, r1r_value, r5r_value))
+                
+                try:
+                    strategy_logic.add_ticker(ticker.strip(), time, r1r_value, r5r_value)
+                except Exception as e:
+                    logger.warning(f"Failed to add ticker {ticker} to strategy_logic: {e}")
+                
+                inserted_count += 1
+                
 
-            # Check if ticker already exists today
-            cursor.execute("""
-                SELECT 1 FROM tradeparameters
-                WHERE ticker = %s AND date = %s
-            """, (ticker, today))
-            exists = cursor.fetchone()
-
-            if exists:
-                return jsonify({'status': 'error', 'error': f'Ticker {ticker} already added today'}), 400
-
-            # Insert with current time
-            cursor.execute("""
-                INSERT INTO tradeparameters (
-                    ticker, date, time, rsi_1min, rsi_5min, strategy_risks
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-            """, (ticker, today, current_time_str, rsi_1min, rsi_5min, Json(strategy_risks)))
-
-            conn.commit()
-            db_pool.putconn(conn)
-
-        # Add to StrategyLogic
-        if strategy_logic:
-            strategy_logic.add_ticker(
-                ticker=ticker,
-                rsi_1m=rsi_1min,
-                rsi_5m=rsi_5min,
-                selected_strategies=selected_strategies
-            )
+                
             
-        # <<< ADD THIS >>>
-        socketio.emit('ticker_added')
-        logger.info(f"Emitted 'ticker_added' event for {ticker}")
-        # <<< END >>>    
-
-        logger.info(f"Added ticker {ticker} at {current_time_str} with strategies {selected_strategies}")
-        return jsonify({'status': 'success'})
-
+            conn.commit()
+            logger.info(f"Successfully inserted {inserted_count} tickers into tradeparameters")
+            db_pool.putconn(conn)
+    except psycopg2.OperationalError as e:
+        logger.error(f"Database error: {e}")
+        if cursor:
+            cursor.close()
+        if conn:
+            db_pool.putconn(conn)
+        return jsonify({'status': 'failure', 'message': str(e)}), 500
     except Exception as e:
-        logger.error(f"Error adding ticker {ticker}: {e}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
+        logger.error(f"Unexpected error: {e}")
+        if cursor:
+            cursor.close()
+        if conn:
+            db_pool.putconn(conn)
+        return jsonify({'status': 'failure', 'message': str(e)}), 500
+    
+    try:
+        with db_lock:
+            conn = db_pool.getconn()
+            cursor = conn.cursor()
+            today = datetime.now().strftime('%Y-%m-%d')
+            cursor.execute('SELECT ticker, date, time, risk_1min, risk_5min, rsi_1min, rsi_5min FROM tradeparameters WHERE date = %s', (today,))
+            tickers = [
+                {
+                    'ticker': row[0],
+                    'date': row[1],
+                    'time': row[2],
+                    'risk_1m': float(row[3]) if row[3] is not None else None,
+                    'risk_5m': float(row[4]) if row[4] is not None else None,
+                    'rsi_1m': row[5],
+                    'rsi_5m': row[6]
+                } for row in cursor.fetchall()
+            ]
+            db_pool.putconn(conn)
+    except psycopg2.Error as e:
+        logger.error(f"Error fetching updated tickers: {e}")
+        return jsonify({'status': 'failure', 'message': 'Failed to fetch updated tickers'}), 500
+    
+    socketio.emit('update_tickers', {'tickers': tickers})
+    
+    return jsonify({'status': 'success'})
 
 
         
@@ -1564,14 +1417,12 @@ def send_order():
             return jsonify({'status': 'failure', 'error': f"Failed to insert trade signal: {str(e)}"}), 500
         finally:
             db_pool.putconn(conn)
-            
-        order_type = 'target' if strategy == 'Multi' else strategy    
         
         command_sell = {
             'trade_id': trade_id,
             'ticker': ticker,
             'shares': shares,
-            'order_type': order_type,
+            'order_type': strategy,
             'stop_price': s_loss,
             'target_price': target,
             'price': entry_price,
@@ -1787,7 +1638,6 @@ def partial_close():
     trade_id = data.get('tradeID')
     ticker = data.get('ticker')
     close_percent = data.get('percent', 50)  # default half
-    last_price = data.get('last_price')  # optional, forwarded by trade_monitor
 
     if not trade_id or not ticker:
         return jsonify({'status': 'error', 'error': 'Missing tradeID or ticker'}), 400
@@ -1815,8 +1665,7 @@ def partial_close():
             trade_id=trade_id,
             shares_to_close=shares_to_close,
             ticker=ticker,
-            leftover_shares=leftover_shares,
-            last_price=last_price
+            leftover_shares=leftover_shares
         )
 
         return jsonify(result)
@@ -2503,7 +2352,6 @@ def start_vwap_fetch():
             logger.info("VwapFetch connected to DAS API")
             threading.Thread(target=vwap_fetch.keep_alive, daemon=True).start()
             vwap_fetch.run()
-            threading.Thread(target=vwap_fetch.update_account_equity, daemon=True).start()
         else:
             logger.error("VwapFetch failed to connect to DAS API")
     except Exception as e:
@@ -2560,11 +2408,6 @@ def start_modules():
         start_minichart()
     except Exception as e:
         logger.error(f"Error in start_minichart: {e}")
-        
-    # Start the combined PMH + HOD periodic updater
-    threading.Thread(target=update_hod_periodically, daemon=True).start()
-
-    logger.info("Started periodic PMH/HOD updater")    
     
        
     logger.info("Started all modules")
